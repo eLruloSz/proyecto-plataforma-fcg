@@ -1,11 +1,12 @@
 import express from 'express';
-// import cors from 'cors'; // Descomenta esto y haz 'npm install cors' si el fetch bloquea por políticas de origen
+import cors from 'cors';
+
 import { ApplicationController } from './controllers/ApplicationController';
 import { CommunicationController } from './controllers/CommunicationController';
 
 const app = express();
 
-// app.use(cors()); // Activa CORS si frontend y backend usan puertos distintos
+app.use(cors()); 
 app.use(express.json());
 
 app.get('/', (req, res) => {
