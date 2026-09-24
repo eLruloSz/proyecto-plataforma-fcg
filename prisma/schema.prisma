@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  LIAISON // Director/Orientador del Liceo
+  STUDENT
+}
+
+enum ApplicationStatus {
+  PRESELECTED      // Notas enviadas por el liceo
+  INVITED          // Correo de invitación enviado
+  FORM_SUBMITTED   // Formulario RSH llenado
+  WORKSHOP_DONE    // Asistió al taller
+  RANKED           // Puntaje calculado (por tu motor o Excel)
+  INTERVIEW_PHASE  // Seleccionado para entrevista presencial/online
+  ACCEPTED
+  REJECTED
+}
+
+enum SchoolType {
+  PUBLIC
+  SUBVENCIONADO
+}
+
+// Hace match exacto con el array NIVELES_EDUCACIONALES de tu motor
+enum EducationLevel {
+  SIN_ESTUDIOS
+  BASICA_INCOMPLETA
+  BASICA_COMPLETA
+  MEDIA_INCOMPLETA
+  MEDIA_COMPLETA
+  SUPERIOR_TECNICA
+  SUPERIOR_UNIVERSITARIA
+  POSTGRADO
+}
+
+// Permite guardar tu ConfigRanking en formato JSON para cada año (Cohorte)
+model Cohort {
+  id              String        @id @default(uuid())
+  year            Int           @unique // ej: 2026
+  isActive        Boolean       @default(true)
+  rankingConfig   Json          // Aquí guardas tu CONFIG_POR_DEFECTO
+  applications    Application[]
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  phone          String?
+  role           Role         @default(STUDENT)
+  application    Application? // Relación 1:1 si es estudiante
+  schoolId       String?
+  school         School?      @relation(fields: [schoolId], references: [id])
+}
+
+model School {
+  id        String     @id @default(uuid())
+  name      String
+  type      SchoolType
+  liaisons  User[]     // Usuarios enlace (Directores)
+  students  Application[]
+}
+
+model Application {
+  id               String            @id @default(uuid())
+  
+  // Relaciones
+  userId           String            @unique
+  user             User              @relation(fields: [userId], references: [id])
+  schoolId         String
+  school           School            @relation(fields: [schoolId], references: [id])
+  cohortId         String
+  cohort           Cohort            @relation(fields: [cohortId], references: [id])
+  
+  status           ApplicationStatus @default(PRESELECTED)
+  
+  // Datos académicos iniciales
+  grade1           Float
+  grade2           Float
+  
+  // Datos del Formulario Interno
+  rshPercentage    Int?              // Registro Social de Hogares (ej: 40)
+  fatherEducation  EducationLevel?   // Para tu función puntajeEducacion
+  motherEducation  EducationLevel?   // Para tu función puntajeEducacion
+  activities       Json?             // Ahora es JSON para guardar el array { tipo, nombre, anios }
+  
+  // Resultados generados por tu Motor de Ranking
+  rankingTotal     Float?            // Puntaje total (ej: 850.50)
+  rankingDetails   Json?             // Desglose guardado como JSON: { rsh: X, educacion: Y }
+  rankingWarnings  String[]          // Array con las advertencias de tu motor
+  rankingPosition  Int?              // Posición final para desempatar (1, 2, 2, 4...)
+  
+  // Agendamiento
+  workshopId       String?
+  workshop         Event?            @relation("Workshop", fields: [workshopId], references: [id])
+  interviewId      String?
+  interview        Event?            @relation("Interview", fields: [interviewId], references: [id])
+}
+
+model Event {
+  id           String        @id @default(uuid())
+  title        String
+  date         DateTime
+  type         String        // 'WORKSHOP_ONLINE', 'INTERVIEW_PRESENTIAL', 'INTERVIEW_ONLINE'
+  capacity     Int
+  applications Application[] @relation("Workshop")
+  interviews   Application[] @relation("Interview")
+}
