@@ -28,8 +28,11 @@ export class ApplicationController {
         data: { 
           user: { update: { phone: String(phone) } },
           rshPercentage: Number(rshPercentage), 
-          activities: (activities || []) as Prisma.InputJsonValue,
-          workshopId: workshopId ? String(workshopId) : undefined,
+          activities: activities ? activities : [],
+          // Solo conectamos el taller si el ID viene con un valor real y no es un texto de prueba
+          workshop: (workshopId && workshopId !== "id-del-taller-si-tienes") 
+            ? { connect: { id: String(workshopId) } } 
+            : undefined,
           status: nextStatus
         },
         include: { user: true }
