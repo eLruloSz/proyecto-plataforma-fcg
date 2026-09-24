@@ -24,13 +24,13 @@
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "prisma": "^8.0.0-rc.15",
+    "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "dependencies": {
     "@mui/x-data-grid": "^9.14.0",
-    "@prisma/client": "^7.10.0",
+    "@prisma/client": "^5.22.0",
     "express": "^5.2.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
