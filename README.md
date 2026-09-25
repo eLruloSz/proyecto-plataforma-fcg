@@ -1,4 +1,4 @@
-# 🚀 Plataforma Beca Carmen Goudie (FCG)
+#  Plataforma Beca Carmen Goudie (FCG)
 
 Sistema web full-stack desarrollado para gestionar el proceso de postulación, validación de requisitos (como el Registro Social de Hogares - RSH), asignación de talleres y cálculo de rankings para la Beca Carmen Goudie.
 
@@ -6,7 +6,7 @@ Sistema web full-stack desarrollado para gestionar el proceso de postulación, v
 ---
 
 
-## 🛠️ Stack Tecnológico
+##  Stack Tecnológico
 
 * **Backend:** Node.js, Express, TypeScript, Prisma ORM.
 * **Base de Datos:** PostgreSQL (alojado en Supabase).
@@ -16,7 +16,7 @@ Sistema web full-stack desarrollado para gestionar el proceso de postulación, v
 ---
 
 
-## 📋 Requisitos Previos
+##  Requisitos Previos
 
 Asegúrate de tener instalado en tu computador:
 
