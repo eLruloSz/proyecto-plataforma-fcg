@@ -39,6 +39,7 @@
         .semaphore.yellow { background: #eab308; }
         .semaphore.red { background: #dc2626; }
         .semaphore.gray { background: #d1d5db; }
+        .signature-divider { border-top: 1px solid #d1d5db; padding-top: 12px; margin-top: 12px; }
         table th { position: sticky; top: 0; background: #f9fafb; z-index: 1; }
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 100; animation: slideUp 0.3s ease; }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
@@ -106,21 +107,21 @@ const LICEOS = [
 ];
 
 const POSTULANTES = [
-    { id: 1, nombre: 'Valentina', apP: 'Sandoval', apM: 'Riquelme', liceo: 'Liceo Politécnico Curanilahue', liceoId: '16.054a', notas: 6.8, rankNotas: 1, pAcademico: 34, rsh: 28, ipc: 45000, pIPC: 28, pEducPadres: 12, vuln: 1, pSocioeco: 46, pCompromiso: 23, pTotal: 87.2, ranking: 1, etapa: 3, docsCompletos: true, email: 'v.sandoval@gmail.com', comentarios: '' },
-    { id: 2, nombre: 'Matías', apP: 'Contreras', apM: 'Silva', liceo: 'Liceo Bicentenario Arauco', liceoId: '16.112b', notas: 6.7, rankNotas: 1, pAcademico: 33, rsh: 32, ipc: 52000, pIPC: 26, pEducPadres: 10, vuln: 1, pSocioeco: 44, pCompromiso: 22, pTotal: 84.5, ranking: 2, etapa: 3, docsCompletos: true, email: 'm.contreras@outlook.cl', comentarios: '' },
-    { id: 3, nombre: 'Camila', apP: 'Reyes', apM: 'Navarro', liceo: 'Liceo Industrial Chiguayante', liceoId: '16.089c', notas: 6.5, rankNotas: 1, pAcademico: 32, rsh: 22, ipc: 38000, pIPC: 29, pEducPadres: 14, vuln: 1, pSocioeco: 48, pCompromiso: 21, pTotal: 83.0, ranking: 3, etapa: 3, docsCompletos: true, email: 'c.reyes@gmail.com', comentarios: '' },
-    { id: 4, nombre: 'Tomás', apP: 'Vargas', apM: 'Leiva', liceo: 'Liceo Pedro Aguirre Cerda', liceoId: '16.076a', notas: 6.6, rankNotas: 1, pAcademico: 33, rsh: 35, ipc: 55000, pIPC: 25, pEducPadres: 8, vuln: 0, pSocioeco: 40, pCompromiso: 20, pTotal: 81.3, ranking: 4, etapa: 3, docsCompletos: false, email: 't.vargas@hotmail.com', comentarios: 'RSH no actualizado, padre cambió de trabajo' },
-    { id: 5, nombre: 'Fernanda', apP: 'López', apM: 'Sepúlveda', liceo: 'Liceo San Pedro de Coronel', liceoId: '16.134d', notas: 6.4, rankNotas: 1, pAcademico: 32, rsh: 18, ipc: 32000, pIPC: 30, pEducPadres: 15, vuln: 1, pSocioeco: 50, pCompromiso: 19, pTotal: 80.1, ranking: 5, etapa: 3, docsCompletos: true, email: 'f.lopez@gmail.com', comentarios: '' },
-    { id: 6, nombre: 'Diego', apP: 'Araya', apM: 'Torres', liceo: 'Liceo Talcahuano', liceoId: '16.098a', notas: 6.3, rankNotas: 1, pAcademico: 31, rsh: 40, ipc: 60000, pIPC: 24, pEducPadres: 10, vuln: 0, pSocioeco: 42, pCompromiso: 18, pTotal: 78.9, ranking: 6, etapa: 3, docsCompletos: true, email: 'd.araya@outlook.cl', comentarios: '' },
-    { id: 7, nombre: 'Isidora', apP: 'Mendoza', apM: 'Ferrer', liceo: 'Liceo Bicentenario Arauco', liceoId: '16.112b', notas: 6.1, rankNotas: 2, pAcademico: 30, rsh: 25, ipc: 42000, pIPC: 27, pEducPadres: 12, vuln: 1, pSocioeco: 45, pCompromiso: 20, pTotal: 77.8, ranking: 7, etapa: 3, docsCompletos: true, email: 'i.mendoza@gmail.com', comentarios: '' },
-    { id: 8, nombre: 'Sebastián', apP: 'Gómez', apM: 'Rojas', liceo: 'Liceo Comercial Concepción', liceoId: '16.067e', notas: 6.2, rankNotas: 1, pAcademico: 31, rsh: 38, ipc: 58000, pIPC: 25, pEducPadres: 8, vuln: 0, pSocioeco: 39, pCompromiso: 21, pTotal: 76.4, ranking: 8, etapa: 3, docsCompletos: false, email: 's.gomez@correo.cl', comentarios: '' },
-    { id: 9, nombre: 'Francisca', apP: 'Hernández', apM: 'Alarcón', liceo: 'Liceo Politécnico Curanilahue', liceoId: '16.054a', notas: 6.0, rankNotas: 2, pAcademico: 30, rsh: 30, ipc: 48000, pIPC: 26, pEducPadres: 10, vuln: 1, pSocioeco: 43, pCompromiso: 19, pTotal: 75.0, ranking: 9, etapa: 3, docsCompletos: true, email: 'f.hernandez@gmail.com', comentarios: '' },
-    { id: 10, nombre: 'Benjamín', apP: 'Castro', apM: 'Vidal', liceo: 'Liceo Talcahuano', liceoId: '16.098a', notas: 6.1, rankNotas: 2, pAcademico: 30, rsh: 36, ipc: 54000, pIPC: 25, pEducPadres: 8, vuln: 0, pSocioeco: 41, pCompromiso: 18, pTotal: 73.6, ranking: 10, etapa: 3, docsCompletos: true, email: 'b.castro@outlook.cl', comentarios: '' },
-    { id: 11, nombre: 'Antonella', apP: 'Díaz', apM: 'Sánchez', liceo: 'Liceo Industrial Chiguayante', liceoId: '16.089c', notas: 5.9, rankNotas: 2, pAcademico: 29, rsh: 20, ipc: 35000, pIPC: 29, pEducPadres: 14, vuln: 1, pSocioeco: 47, pCompromiso: 17, pTotal: 72.3, ranking: 11, etapa: 2, docsCompletos: false, email: 'a.diaz@gmail.com', comentarios: '' },
-    { id: 12, nombre: 'Cristóbal', apP: 'Peña', apM: 'Morales', liceo: 'Liceo Multiarte Lebu', liceoId: '16.145f', notas: 5.8, rankNotas: 1, pAcademico: 29, rsh: 42, ipc: 62000, pIPC: 23, pEducPadres: 8, vuln: 0, pSocioeco: 38, pCompromiso: 19, pTotal: 71.5, ranking: 12, etapa: 2, docsCompletos: false, email: 'c.pena@hotmail.com', comentarios: 'RSH al límite, caso a revisar' },
-    { id: 13, nombre: 'Javiera', apP: 'Ramos', apM: 'Cifuentes', liceo: 'Liceo Bicentenario Arauco', liceoId: '16.112b', notas: 5.7, rankNotas: 3, pAcademico: 28, rsh: 34, ipc: 50000, pIPC: 26, pEducPadres: 10, vuln: 0, pSocioeco: 42, pCompromiso: 16, pTotal: 70.2, ranking: 13, etapa: 2, docsCompletos: true, email: 'j.ramos@correo.cl', comentarios: '' },
-    { id: 14, nombre: 'Vicente', apP: 'Orellana', apM: 'Muñoz', liceo: 'Liceo Pedro Aguirre Cerda', liceoId: '16.076a', notas: 5.9, rankNotas: 2, pAcademico: 29, rsh: 44, ipc: 59000, pIPC: 24, pEducPadres: 8, vuln: 0, pSocioeco: 38, pCompromiso: 17, pTotal: 68.7, ranking: 14, etapa: 2, docsCompletos: false, email: 'v.orellana@outlook.cl', comentarios: '' },
-    { id: 15, nombre: 'Consuelo', apP: 'Bravo', apM: 'Aguilera', liceo: 'Liceo San Pedro de Coronel', liceoId: '16.134d', notas: 5.6, rankNotas: 2, pAcademico: 28, rsh: 48, ipc: 65000, pIPC: 22, pEducPadres: 6, vuln: 0, pSocioeco: 35, pCompromiso: 18, pTotal: 66.4, ranking: 15, etapa: 1, docsCompletos: false, email: 'c.bravo@gmail.com', comentarios: 'RSH >40%, revisar caso a caso' }
+    { id: 1, nombre: 'Valentina', apP: 'Sandoval', apM: 'Riquelme', liceo: 'Liceo Politécnico Curanilahue', liceoId: '16.054a', notas: 6.8, rankNotas: 1, pAcademico: 40, rsh: 28, ipc: 45000, pIPC: 28, pEducPadres: 12, vuln: 1, pSocioeco: 46, pCompromiso: 23, pTotal: 87.2, ranking: 1, etapa: 3, docsCompletos: true, email: 'v.sandoval@gmail.com', comentarios: '' },
+    { id: 2, nombre: 'Matías', apP: 'Contreras', apM: 'Silva', liceo: 'Liceo Bicentenario Arauco', liceoId: '16.112b', notas: 6.7, rankNotas: 1, pAcademico: 33, rsh: 40, ipc: 52000, pIPC: 26, pEducPadres: 10, vuln: 1, pSocioeco: 44, pCompromiso: 22, pTotal: 84.5, ranking: 2, etapa: 3, docsCompletos: true, email: 'm.contreras@outlook.cl', comentarios: '' },
+    { id: 3, nombre: 'Camila', apP: 'Reyes', apM: 'Navarro', liceo: 'Liceo Industrial Chiguayante', liceoId: '16.089c', notas: 6.5, rankNotas: 1, pAcademico: 32, rsh: 40, ipc: 38000, pIPC: 29, pEducPadres: 14, vuln: 1, pSocioeco: 48, pCompromiso: 21, pTotal: 83.0, ranking: 3, etapa: 3, docsCompletos: true, email: 'c.reyes@gmail.com', comentarios: '' },
+    { id: 4, nombre: 'Tomás', apP: 'Vargas', apM: 'Leiva', liceo: 'Liceo Pedro Aguirre Cerda', liceoId: '16.076a', notas: 6.6, rankNotas: 1, pAcademico: 33, rsh: 40, ipc: 55000, pIPC: 25, pEducPadres: 8, vuln: 0, pSocioeco: 40, pCompromiso: 20, pTotal: 81.3, ranking: 4, etapa: 3, docsCompletos: false, email: 't.vargas@hotmail.com', comentarios: 'RSH no actualizado, padre cambió de trabajo' },
+    { id: 5, nombre: 'Fernanda', apP: 'López', apM: 'Sepúlveda', liceo: 'Liceo San Pedro de Coronel', liceoId: '16.134d', notas: 6.4, rankNotas: 1, pAcademico: 32, rsh: 50, ipc: 32000, pIPC: 30, pEducPadres: 15, vuln: 1, pSocioeco: 50, pCompromiso: 19, pTotal: 80.1, ranking: 5, etapa: 3, docsCompletos: true, email: 'f.lopez@gmail.com', comentarios: '' },
+    { id: 6, nombre: 'Diego', apP: 'Araya', apM: 'Torres', liceo: 'Liceo Talcahuano', liceoId: '16.098a', notas: 6.3, rankNotas: 1, pAcademico: 31, rsh: 60, ipc: 60000, pIPC: 24, pEducPadres: 10, vuln: 0, pSocioeco: 42, pCompromiso: 18, pTotal: 78.9, ranking: 6, etapa: 3, docsCompletos: true, email: 'd.araya@outlook.cl', comentarios: '' },
+    { id: 7, nombre: 'Isidora', apP: 'Mendoza', apM: 'Ferrer', liceo: 'Liceo Bicentenario Arauco', liceoId: '16.112b', notas: 6.1, rankNotas: 2, pAcademico: 30, rsh: 40, ipc: 42000, pIPC: 27, pEducPadres: 12, vuln: 1, pSocioeco: 45, pCompromiso: 20, pTotal: 77.8, ranking: 7, etapa: 3, docsCompletos: true, email: 'i.mendoza@gmail.com', comentarios: '' },
+    { id: 8, nombre: 'Sebastián', apP: 'Gómez', apM: 'Rojas', liceo: 'Liceo Comercial Concepción', liceoId: '16.067e', notas: 6.2, rankNotas: 1, pAcademico: 31, rsh: 40, ipc: 58000, pIPC: 25, pEducPadres: 8, vuln: 0, pSocioeco: 39, pCompromiso: 21, pTotal: 76.4, ranking: 8, etapa: 3, docsCompletos: false, email: 's.gomez@correo.cl', comentarios: '' },
+    { id: 9, nombre: 'Francisca', apP: 'Hernández', apM: 'Alarcón', liceo: 'Liceo Politécnico Curanilahue', liceoId: '16.054a', notas: 6.0, rankNotas: 2, pAcademico: 30, rsh: 40, ipc: 48000, pIPC: 26, pEducPadres: 10, vuln: 1, pSocioeco: 43, pCompromiso: 19, pTotal: 75.0, ranking: 9, etapa: 3, docsCompletos: true, email: 'f.hernandez@gmail.com', comentarios: '' },
+    { id: 10, nombre: 'Benjamín', apP: 'Castro', apM: 'Vidal', liceo: 'Liceo Talcahuano', liceoId: '16.098a', notas: 6.1, rankNotas: 2, pAcademico: 30, rsh: 40, ipc: 54000, pIPC: 25, pEducPadres: 8, vuln: 0, pSocioeco: 41, pCompromiso: 18, pTotal: 73.6, ranking: 10, etapa: 3, docsCompletos: true, email: 'b.castro@outlook.cl', comentarios: '' },
+    { id: 11, nombre: 'Antonella', apP: 'Díaz', apM: 'Sánchez', liceo: 'Liceo Industrial Chiguayante', liceoId: '16.089c', notas: 5.9, rankNotas: 2, pAcademico: 29, rsh: 50, ipc: 35000, pIPC: 29, pEducPadres: 14, vuln: 1, pSocioeco: 47, pCompromiso: 17, pTotal: 72.3, ranking: 11, etapa: 2, docsCompletos: false, email: 'a.diaz@gmail.com', comentarios: '' },
+    { id: 12, nombre: 'Cristóbal', apP: 'Peña', apM: 'Morales', liceo: 'Liceo Multiarte Lebu', liceoId: '16.145f', notas: 5.8, rankNotas: 1, pAcademico: 29, rsh: 40, ipc: 62000, pIPC: 23, pEducPadres: 8, vuln: 0, pSocioeco: 38, pCompromiso: 19, pTotal: 71.5, ranking: 12, etapa: 2, docsCompletos: false, email: 'c.pena@hotmail.com', comentarios: 'RSH al límite, caso a revisar' },
+    { id: 13, nombre: 'Javiera', apP: 'Ramos', apM: 'Cifuentes', liceo: 'Liceo Bicentenario Arauco', liceoId: '16.112b', notas: 5.7, rankNotas: 3, pAcademico: 28, rsh: 40, ipc: 50000, pIPC: 26, pEducPadres: 10, vuln: 0, pSocioeco: 42, pCompromiso: 16, pTotal: 70.2, ranking: 13, etapa: 2, docsCompletos: true, email: 'j.ramos@correo.cl', comentarios: '' },
+    { id: 14, nombre: 'Vicente', apP: 'Orellana', apM: 'Muñoz', liceo: 'Liceo Pedro Aguirre Cerda', liceoId: '16.076a', notas: 5.9, rankNotas: 2, pAcademico: 29, rsh: 60, ipc: 59000, pIPC: 24, pEducPadres: 8, vuln: 0, pSocioeco: 38, pCompromiso: 17, pTotal: 68.7, ranking: 14, etapa: 2, docsCompletos: false, email: 'v.orellana@outlook.cl', comentarios: '' },
+    { id: 15, nombre: 'Consuelo', apP: 'Bravo', apM: 'Aguilera', liceo: 'Liceo San Pedro de Coronel', liceoId: '16.134d', notas: 5.6, rankNotas: 2, pAcademico: 28, rsh: 40, ipc: 65000, pIPC: 22, pEducPadres: 6, vuln: 0, pSocioeco: 35, pCompromiso: 18, pTotal: 66.4, ranking: 15, etapa: 1, docsCompletos: false, email: 'c.bravo@gmail.com', comentarios: 'RSH >40%, revisar caso a caso' }
 ];
 
 const EMAIL_TEMPLATES = [
@@ -147,7 +148,9 @@ let state = {
     postulanteFilter: 'todos',
     showCompose: false,
     composeData: { destinatario: '', asunto: '', cuerpo: '' },
-    selectedTemplate: null
+    selectedTemplate: null,
+    editingSignature: false,
+    signature: 'Max\nCoordinador de Selección\nFundación Carmen Goudie\n+56 9 1234 5678\nfundacioncgoudie@gmail.com'
 };
 
 // ===================== UTILIDADES =====================
@@ -161,7 +164,9 @@ function toast(msg, type = 'success') {
     document.getElementById('toastContainer').appendChild(el);
     setTimeout(() => el.remove(), 3000);
 }
-
+function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 function semaphoreColor(val) {
     if (val === true) return 'green';
     if (val === 'pendiente' || val === false) return 'gray';
@@ -481,7 +486,7 @@ function renderComunicacion() {
                             <button onclick="useTemplate(${t.id});" class="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded px-2 py-1 hover:bg-gray-50">Usar</button>
                         </div>
                     `).join('')}
-)                </div>
+                </div>
             </div>
 
             <!-- Correos enviados -->
