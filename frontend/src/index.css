@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primario { @apply btn bg-gray-900 text-white hover:bg-gray-700; }
+  .btn-secundario { @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50; }
+  .btn-peligro { @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50; }
+  .btn-chico { @apply px-2 py-1 text-xs; }
+  .input { @apply w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200; }
+  .label { @apply mb-1 block text-xs font-medium text-gray-600; }
+  .tarjeta { @apply rounded-lg border border-gray-200 bg-white; }
+  .tabla { @apply w-full text-sm; }
+  .tabla th { @apply sticky top-0 z-[1] border-b border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-semibold text-gray-600; }
+  .tabla td { @apply border-b border-gray-100 px-3 py-2 align-middle; }
+  .tabla tbody tr:hover { @apply bg-gray-50/70; }
+  .titulo { @apply text-lg font-semibold text-gray-900; }
+  .subtitulo { @apply text-sm font-semibold text-gray-900; }
+}
