@@ -1,0 +1,72 @@
+# Desarrollo:
+#   docker compose up -d              → base de datos + buzón de prueba (Mailpit)
+#   luego backend y frontend con npm (ver README)
+#
+# Todo en contenedores (para mostrar o probar sin instalar Node):
+#   docker compose --profile app up -d --build
+#   → http://localhost:8080
+#
+# Para volver a cargar la base desde cero (borra todos los datos):
+#   docker compose down -v && docker compose up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: becas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: becas
+      POSTGRES_USER: becas
+      POSTGRES_PASSWORD: becas_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - becas_db:/var/lib/postgresql/data
+      # Se ejecutan solo la primera vez que se crea el volumen.
+      - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/02_datos_demo.sql:/docker-entrypoint-initdb.d/02_datos_demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Atrapa todos los correos que envía el sistema y los muestra en
+  # http://localhost:8025 — nada sale a internet.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: becas-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # interfaz web
+
+  backend:
+    profiles: ["app"]
+    build: ./backend
+    container_name: becas-backend
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://becas:becas_dev_password@db:5432/becas
+      JWT_SECRET: cambia-esto-por-un-secreto-largo-de-al-menos-32-caracteres
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      MAIL_FROM: Fundación Carmen Goudie <becas@fundacion.local>
+      MAIL_WEBHOOK_TOKEN: token-de-desarrollo
+      UPLOAD_DIR: /app/uploads
+      CORS_ORIGINS: http://localhost:8080
+    volumes:
+      - becas_uploads:/app/uploads
+
+  frontend:
+    profiles: ["app"]
+    build: ./frontend
+    container_name: becas-frontend
+    depends_on: [backend]
+    ports:
+      - "8080:80"
+
+volumes:
+  becas_db:
+  becas_uploads:
