@@ -2,9 +2,9 @@ import { Body, Controller, Get, HttpCode, Injectable, Module, NotFoundException,
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { DataSource } from 'typeorm';
-import { ProcesoActualService } from '../src/common/proceso-actual.service';
-import { AuditoriaService } from '../src/common/auditoria.service';
-import { Usuario, UsuarioSesion } from '../src/auth/public.decorator';
+import { ProcesoActualService } from '../common/proceso-actual.service';
+import { AuditoriaService } from '../common/auditoria.service';
+import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 
 class ActualizarProcesoDto {
   @IsOptional() @IsString() @MaxLength(200) nombre?: string;
