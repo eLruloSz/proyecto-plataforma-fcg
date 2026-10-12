@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, EnvioDetalle, Grupo, GRUPOS, Invitado, Liceo, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio } from '../api';
+import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
+import { useProceso } from '../Layout';
 import { Caja, Etiqueta, useAviso } from '../ui';
 
 interface Inicial {
@@ -9,7 +10,15 @@ interface Inicial {
   liceoIds?: string[];
   base?: EnvioDetalle;
   reenviar?: EnvioDetalle;
+  filtroEtapa?: FiltroEtapa;
 }
+
+const TEXTO_FILTRO: Record<TipoFiltroEtapa, string> = {
+  EN_ETAPA: 'los estudiantes que están en',
+  FALTAN_REQUISITOS: 'los estudiantes a los que les faltan documentos en',
+  PASA: 'los estudiantes que pasan',
+  NO_PASA: 'los estudiantes que no continúan después de',
+};
 
 const ESTUDIANTES = { todos: 'Todos los invitados', PENDIENTE: 'Solo los que no han respondido', CONFIRMADO: 'Solo los que aceptaron' } as const;
 
@@ -25,8 +34,11 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const { data: invitados } = useQuery({ queryKey: ['invitados'], queryFn: () => api.get<Invitado[]>('/invitados') });
   const { data: info } = useQuery({ queryKey: ['variables'], queryFn: () => api.get<{ variables: Record<string, string>; modoSimulacion: boolean }>('/comunicacion/variables') });
 
+  const { data: proceso } = useProceso();
+  const filtro = inicial.filtroEtapa;
+  const etapaFiltro = proceso?.etapas.find((e) => e.id === filtro?.etapaId);
   const origen = inicial.reenviar ?? inicial.base;
-  const [grupo, setGrupo] = useState<Grupo>(origen?.grupo ?? inicial.grupo ?? 'CONTRAPARTES');
+  const [grupo, setGrupo] = useState<Grupo>(filtro ? 'POSTULANTES' : origen?.grupo ?? inicial.grupo ?? 'CONTRAPARTES');
   const [liceoIds, setLiceoIds] = useState<string[]>(inicial.liceoIds ?? []);
   const [estudiantes, setEstudiantes] = useState<keyof typeof ESTUDIANTES>('todos');
   const [plantillaId, setPlantillaId] = useState<string>(origen?.plantilla_id ?? '');
@@ -51,7 +63,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
     if (!p) return;
     setAsunto(p.asunto); setCuerpo(p.cuerpo); setProposito(p.proposito);
     setAdjuntos(p.adjuntos.map((a) => ({ id: a.id, nombre: a.nombre })));
-    if (p.proposito === 'INVITACION_ESTUDIANTES') setGrupo('POSTULANTES');
+    if (p.proposito === 'INVITACION_ESTUDIANTES' && !filtro) setGrupo('POSTULANTES');
   };
 
   const insertarVariable = (v: string) => {
@@ -67,6 +79,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
     const s: SolicitudEnvio = { grupo, proposito, asunto, cuerpo, adjuntoIds: adjuntos.map((a) => a.id) };
     if (plantillaId) s.plantillaId = plantillaId;
     if (inicial.reenviar) s.envioOrigenId = inicial.reenviar.id;
+    else if (filtro) s.filtroEtapa = filtro;
     else if (grupo === 'LICEO') s.liceoIds = liceoIds;
     else if (grupo === 'POSTULANTES' && estudiantes !== 'todos') {
       s.postulacionIds = (invitados ?? []).filter((i) => i.confirmacion === estudiantes).map((i) => i.id);
@@ -127,16 +140,25 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
         </Caja>
       )}
 
+      {filtro && (
+        <Caja tono="azul">
+          Para: <strong>{TEXTO_FILTRO[filtro.tipo]} {filtro.tipo === 'PASA' ? 'de' : ''} “{etapaFiltro?.nombre ?? 'la etapa'}”</strong>
+          {filtro.soloSinAviso ? ' (solo los que aún no han sido avisados)' : ''}.
+          {(filtro.tipo === 'PASA' || filtro.tipo === 'NO_PASA') && ' Al enviar, quedan marcados como avisados.'}
+          {' '}En “Revisar destinatarios” ves exactamente a quién le llega.
+        </Caja>
+      )}
+
       <div className="tarjeta space-y-4 p-5">
         {/* Destinatarios */}
         {!inicial.reenviar && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor="grupo">Para</label>
-              <select id="grupo" className="input" value={grupo} onChange={(e) => setGrupo(e.target.value as Grupo)}>
+              <select id="grupo" className="input" value={grupo} disabled={!!filtro} onChange={(e) => setGrupo(e.target.value as Grupo)}>
                 {(Object.keys(GRUPOS) as Grupo[]).map((g) => <option key={g} value={g}>{GRUPOS[g]}</option>)}
               </select>
-              {grupo === 'POSTULANTES' && (
+              {grupo === 'POSTULANTES' && !filtro && (
                 <select className="input mt-2" value={estudiantes} onChange={(e) => setEstudiantes(e.target.value as keyof typeof ESTUDIANTES)} aria-label="Qué estudiantes">
                   {Object.entries(ESTUDIANTES).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
                 </select>

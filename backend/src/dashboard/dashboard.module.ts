@@ -11,20 +11,60 @@ export class DashboardService {
   async resumen() {
     const p = await this.proceso.obtener();
 
-    // Embudo de invitación: cada paso cuenta a quienes llegaron al menos hasta ahí.
+    // Invitación: respuesta de los invitados.
     const [embudo] = await this.ds.query(
       `SELECT COUNT(*)::int AS invitados,
               COUNT(*) FILTER (WHERE confirmacion = 'CONFIRMADO')::int AS confirmaron,
               COUNT(*) FILTER (WHERE confirmacion = 'RECHAZADO')::int AS rechazaron,
-              COUNT(*) FILTER (WHERE confirmacion = 'PENDIENTE')::int AS sin_respuesta,
+              COUNT(*) FILTER (WHERE confirmacion = 'PENDIENTE' AND estado NOT IN ('NO_CONTINUA','DESISTIO'))::int AS sin_respuesta,
               COUNT(*) FILTER (WHERE asistio_encuentro)::int AS asistieron_encuentro,
-              COUNT(*) FILTER (WHERE estado IN ('POSTULO','PRESELECCIONADO_1','FINALISTA','BECARIO'))::int AS postularon,
-              COUNT(*) FILTER (WHERE estado IN ('PRESELECCIONADO_1','FINALISTA','BECARIO'))::int AS preseleccionados,
-              COUNT(*) FILTER (WHERE estado IN ('FINALISTA','BECARIO'))::int AS finalistas,
               COUNT(*) FILTER (WHERE estado = 'BECARIO')::int AS becarios,
-              COUNT(*) FILTER (WHERE confirmacion = 'PENDIENTE' AND p.persona_id IN
-                 (SELECT id FROM personas WHERE email IS NULL))::int AS sin_email
-         FROM postulaciones p WHERE proceso_id = $1`,
+              COUNT(*) FILTER (WHERE estado NOT IN ('NO_CONTINUA','DESISTIO') AND pe.email IS NULL)::int AS sin_email
+         FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id WHERE p.proceso_id = $1`,
+      [p.id],
+    );
+
+    // Avance: cuántos llegaron a cada etapa y cuántos siguen en ella.
+    const porEtapa = await this.ds.query(
+      `SELECT e.id, e.orden, e.nombre, e.estado, e.cupo,
+              COUNT(p.id) FILTER (WHERE pe2.orden >= e.orden)::int AS llegaron,
+              COUNT(p.id) FILTER (WHERE p.etapa_id = e.id AND p.estado NOT IN ('NO_CONTINUA','DESISTIO','BECARIO'))::int AS en_etapa
+         FROM etapas e
+         LEFT JOIN postulaciones p ON p.proceso_id = e.proceso_id
+         LEFT JOIN etapas pe2 ON pe2.id = p.etapa_id
+        WHERE e.proceso_id = $1
+        GROUP BY e.id ORDER BY e.orden`,
+      [p.id],
+    );
+
+    // Pendientes por etapa: requisitos que faltan, marcas sin confirmar, resultados sin avisar.
+    const requisitosPendientes = await this.ds.query(
+      `SELECT e.id AS etapa_id, e.nombre AS etapa, q.nombre AS requisito,
+              COUNT(p.id) FILTER (WHERE NOT EXISTS (SELECT 1 FROM cumplimientos c
+                                   WHERE c.requisito_id = q.id AND c.postulacion_id = p.id))::int AS faltan
+         FROM etapas e
+         JOIN requisitos_etapa q ON q.etapa_id = e.id AND q.activo
+         JOIN postulaciones p ON p.etapa_id = e.id AND p.estado NOT IN ('NO_CONTINUA','DESISTIO','BECARIO')
+        WHERE e.proceso_id = $1
+        GROUP BY e.id, q.id ORDER BY e.orden, q.orden`,
+      [p.id],
+    );
+    const [{ con_requisitos_pendientes }] = await this.ds.query(
+      `SELECT COUNT(*)::int AS con_requisitos_pendientes FROM postulaciones p
+        WHERE p.proceso_id = $1 AND p.estado NOT IN ('NO_CONTINUA','DESISTIO','BECARIO')
+          AND EXISTS (SELECT 1 FROM requisitos_etapa q WHERE q.etapa_id = p.etapa_id AND q.activo
+                        AND NOT EXISTS (SELECT 1 FROM cumplimientos c WHERE c.requisito_id = q.id AND c.postulacion_id = p.id))`,
+      [p.id],
+    );
+    const resultadosPendientes = await this.ds.query(
+      `SELECT e.id AS etapa_id, e.nombre AS etapa,
+              COUNT(*) FILTER (WHERE NOT r.confirmado)::int AS sin_confirmar,
+              COUNT(*) FILTER (WHERE r.confirmado AND r.avisado_en IS NULL)::int AS sin_avisar
+         FROM resultados_etapa r JOIN etapas e ON e.id = r.etapa_id
+        WHERE e.proceso_id = $1
+        GROUP BY e.id
+       HAVING COUNT(*) FILTER (WHERE NOT r.confirmado) > 0 OR COUNT(*) FILTER (WHERE r.confirmado AND r.avisado_en IS NULL) > 0
+        ORDER BY e.orden`,
       [p.id],
     );
 
@@ -76,7 +116,12 @@ export class DashboardService {
 
     return {
       proceso: { id: p.id, nombre: p.nombre, anio: p.anio },
-      embudo, liceos, porLiceo, rebotados,
+      embudo, porEtapa, liceos, porLiceo, rebotados,
+      pendientes: {
+        con_requisitos_pendientes,
+        requisitos: requisitosPendientes.filter((r: any) => r.faltan > 0),
+        resultados: resultadosPendientes,
+      },
       correosPendientes: correosPendientes.map((c: any) => ({ ...c, asunto: asuntoVisible(c.asunto, p.anio) })),
     };
   }

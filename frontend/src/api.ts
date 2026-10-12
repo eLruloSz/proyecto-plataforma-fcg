@@ -71,7 +71,10 @@ export const api = {
 // Tipos de la API
 // ---------------------------------------------------------------------------
 
-export interface Etapa { id: string; orden: number; nombre: string; descripcion: string | null; estado: 'PENDIENTE' | 'ACTIVA' | 'CERRADA'; fecha_inicio: string | null; fecha_fin: string | null }
+export interface Etapa {
+  id: string; orden: number; nombre: string; descripcion: string | null; estado: 'PENDIENTE' | 'ACTIVA' | 'CERRADA';
+  fecha_inicio: string | null; fecha_fin: string | null; cupo: number | null; estudiantes: number; requisitos: number;
+}
 export interface Proceso { id: string; nombre: string; anio: number; sufijo_id: string; ultimo_correlativo: number; etapas: Etapa[] }
 export interface Contacto { id: string; nombre: string; cargo: string | null; email: string | null; telefono: string | null }
 export type Participacion = 'PENDIENTE' | 'PARTICIPA' | 'NO_PARTICIPA';
@@ -108,6 +111,8 @@ export interface Invitado {
   confirmacion: Confirmacion; confirmacion_en: string | null; encuentro_evento_id: string | null; asistio_encuentro: boolean | null;
   nombres: string; apellido_paterno: string; apellido_materno: string | null; email: string | null; telefono: string | null; rut: string | null;
   liceo_id: string; liceo_codigo: string; liceo: string; comentarios: number;
+  etapa_id: string | null; etapa: string | null; etapa_orden: number | null;
+  resultado_etapa: 'PASA' | 'NO_PASA' | null; resultado_confirmado: boolean; faltan: string[];
 }
 export interface Encuentro { id: string; fecha: string; enlace: string | null; inscritos: number; asistentes: number }
 export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
@@ -136,13 +141,21 @@ export interface PreviaEnvio {
   excluidos: { clave: string; nombre: string; liceo: string; motivo: string }[];
   advertencias: string[];
 }
+export type TipoFiltroEtapa = 'EN_ETAPA' | 'FALTAN_REQUISITOS' | 'PASA' | 'NO_PASA';
+export interface FiltroEtapa { etapaId: string; tipo: TipoFiltroEtapa; soloSinAviso?: boolean }
 export interface SolicitudEnvio {
   grupo: Grupo; proposito?: string; asunto: string; cuerpo: string; plantillaId?: string; adjuntoIds?: string[];
-  liceoIds?: string[]; postulacionIds?: string[]; envioOrigenId?: string; excluir?: string[];
+  liceoIds?: string[]; postulacionIds?: string[]; envioOrigenId?: string; excluir?: string[]; filtroEtapa?: FiltroEtapa;
 }
 export interface Dashboard {
   proceso: { id: string; nombre: string; anio: number };
-  embudo: { invitados: number; confirmaron: number; rechazaron: number; sin_respuesta: number; asistieron_encuentro: number; postularon: number; preseleccionados: number; finalistas: number; becarios: number; sin_email: number };
+  embudo: { invitados: number; confirmaron: number; rechazaron: number; sin_respuesta: number; asistieron_encuentro: number; becarios: number; sin_email: number };
+  porEtapa: { id: string; orden: number; nombre: string; estado: Etapa['estado']; cupo: number | null; llegaron: number; en_etapa: number }[];
+  pendientes: {
+    con_requisitos_pendientes: number;
+    requisitos: { etapa_id: string; etapa: string; requisito: string; faltan: number }[];
+    resultados: { etapa_id: string; etapa: string; sin_confirmar: number; sin_avisar: number }[];
+  };
   liceos: { total: number; participan: number; no_participan: number; sin_respuesta: number; con_nomina: number };
   porLiceo: { id: string; codigo: string; nombre: string; participacion: Participacion; alumnos_nomina: number; invitados: number; confirmaron: number; sin_respuesta: number }[];
   correosPendientes: { id: string; asunto: string; grupo: Grupo; enviado_en: string; total: number; sin_respuesta: number }[];
@@ -154,6 +167,21 @@ export interface GrillaHitos {
     hitos: Record<string, { completado: boolean; automatico: boolean; fecha: string | null; observaciones: string | null }> }[];
 }
 
+export interface VistaAvance {
+  etapa: Etapa & { siguiente: { id: string; orden: number; nombre: string } | null; anterior: { id: string; orden: number; nombre: string } | null };
+  requisitos: { id: string; nombre: string; orden: number }[];
+  estudiantes: {
+    id: string; codigo: string; curso: string; promedio: number; estado: string; confirmacion: Confirmacion;
+    nombres: string; apellido_paterno: string; apellido_materno: string | null; email: string | null;
+    liceo_id: string; liceo_codigo: string; liceo: string; en_esta_etapa: boolean;
+    resultado: 'PASA' | 'NO_PASA' | null; confirmado: boolean; confirmado_en: string | null; avisado_en: string | null; cumplidos: string[];
+  }[];
+  resumen: {
+    total: number; pendientes_de_decidir: number; marcados_pasa: number; marcados_no_pasa: number;
+    confirmados_pasa: number; confirmados_no_pasa: number; sin_avisar_pasa: number; sin_avisar_no_pasa: number; con_requisitos_pendientes: number;
+  };
+}
+
 // Textos para mostrar
 export const PROPOSITOS: Record<string, string> = {
   PRESENTACION: 'Presentación a liceos',
@@ -162,6 +190,7 @@ export const PROPOSITOS: Record<string, string> = {
   INVITACION_ESTUDIANTES: 'Invitación a estudiantes',
   AVISO_RESULTADO: 'Aviso de resultado',
   AGRADECIMIENTO: 'Agradecimiento',
+  INFORME_LICEO: 'Informe de estudiantes al liceo',
   OTRO: 'Otro',
 };
 export const GRUPOS: Record<Grupo, string> = {

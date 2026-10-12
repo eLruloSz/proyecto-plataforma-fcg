@@ -7,6 +7,8 @@ export const VARIABLES = {
   firma: 'Tu firma (se configura en tu perfil)',
   codigo: 'Id del estudiante, ej. 01.006a (solo estudiantes)',
   curso: 'Curso del estudiante (solo estudiantes)',
+  documentos_pendientes: 'Lo que le falta entregar al estudiante en su etapa actual, uno por línea (solo estudiantes)',
+  estudiantes: 'Lista de los estudiantes del liceo con su etapa y lo que les falta (solo correos a liceos)',
 } as const;
 
 const PATRON = /\{\{\s*([a-zA-Z_]+)\s*\}\}/g;

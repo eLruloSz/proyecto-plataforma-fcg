@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, EnvioDetalle, EnvioResumen, GRUPOS, Plantilla, PROPOSITOS } from '../api';
+import { api, EnvioDetalle, EnvioResumen, FiltroEtapa, GRUPOS, Plantilla, PROPOSITOS, TipoFiltroEtapa } from '../api';
 import { Cargando, ErrorCarga, Etiqueta, fecha, Modal, useAviso, Vacio } from '../ui';
 import { Redactor } from './Redactor';
 
@@ -156,7 +156,20 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
  * /comunicacion?plantilla=ID    → redactar desde una plantilla
  * /comunicacion?reenviar=ID     → recordatorio a los que no respondieron
  * /comunicacion?base=ID         → nuevo correo a partir de uno ya enviado
+ * /comunicacion?proposito=X     → redactar con la primera plantilla de ese tipo (con &liceo=ID, a ese liceo)
+ * /comunicacion?nuevo=1&etapa=ID&tipo=PASA|NO_PASA|EN_ETAPA|FALTAN_REQUISITOS[&soloSinAviso=1]
+ *                               → correo a estudiantes según su situación en una etapa
  */
+const TIPOS_FILTRO: TipoFiltroEtapa[] = ['EN_ETAPA', 'FALTAN_REQUISITOS', 'PASA', 'NO_PASA'];
+
+/** Plantilla sugerida para cada caso (si existe). */
+function plantillaSugerida(plantillas: Plantilla[], proposito: string | null, tipo: TipoFiltroEtapa | undefined) {
+  if (tipo === 'PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /avanza|pasa/i.test(p.nombre));
+  if (tipo === 'NO_PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /no contin|no pasa/i.test(p.nombre));
+  if (tipo === 'FALTAN_REQUISITOS') return plantillas.find((p) => /documentos pendientes/i.test(p.nombre));
+  if (proposito) return plantillas.find((p) => p.proposito === proposito);
+  return undefined;
+}
 export function Comunicacion() {
   const [params, setParams] = useSearchParams();
   const navegar = useNavigate();
@@ -170,25 +183,34 @@ export function Comunicacion() {
   });
   const { data: plantillas } = useQuery({ queryKey: ['plantillas'], queryFn: () => api.get<Plantilla[]>('/comunicacion/plantillas') });
 
-  const redactando = params.has('nuevo') || params.has('liceo') || params.has('plantilla') || !!idOrigen;
+  const redactando = params.has('nuevo') || params.has('liceo') || params.has('plantilla') || params.has('proposito') || !!idOrigen;
   if (redactando) {
     if (idOrigen && isLoading) return <Cargando />;
     const liceo = params.get('liceo');
-    const plantilla = plantillas?.find((p) => p.id === params.get('plantilla'));
+    const tipo = params.get('tipo') as TipoFiltroEtapa | null;
+    const filtroEtapa: FiltroEtapa | undefined = params.get('etapa') && tipo && TIPOS_FILTRO.includes(tipo)
+      ? { etapaId: params.get('etapa')!, tipo, ...(params.get('soloSinAviso') ? { soloSinAviso: true } : {}) }
+      : undefined;
+    const sugerir = !!filtroEtapa || params.has('proposito');
+    if (sugerir && !plantillas) return <Cargando />;
+    const plantilla = params.get('plantilla')
+      ? plantillas?.find((p) => p.id === params.get('plantilla'))
+      : sugerir ? plantillaSugerida(plantillas ?? [], params.get('proposito'), filtroEtapa?.tipo) : undefined;
     // Desde una plantilla, se arma un "envío base" con su contenido.
     const desdePlantilla = plantilla ? {
-      id: '', grupo: plantilla.proposito === 'INVITACION_ESTUDIANTES' ? 'POSTULANTES' : 'CONTRAPARTES', proposito: plantilla.proposito,
+      id: '', grupo: liceo ? 'LICEO' : ['INVITACION_ESTUDIANTES', 'AVISO_RESULTADO'].includes(plantilla.proposito) ? 'POSTULANTES' : 'CONTRAPARTES', proposito: plantilla.proposito,
       asunto: plantilla.asunto, cuerpo: plantilla.cuerpo, plantilla_id: plantilla.id,
       adjuntos: plantilla.adjuntos.map((a) => ({ id: a.id, nombre_original: a.nombre, tamano_bytes: a.tamano })),
     } as unknown as EnvioDetalle : undefined;
     if (params.get('plantilla') && !plantillas) return <Cargando />;
     return (
       <div>
-        <h1 className="titulo mb-4">{reenviar ? 'Recordatorio a los que faltan' : 'Nuevo correo'}</h1>
+        <h1 className="titulo mb-4">{reenviar ? 'Recordatorio a los que faltan' : filtroEtapa ? 'Correo a estudiantes de una etapa' : 'Nuevo correo'}</h1>
         <Redactor
           key={params.toString()}
           inicial={{
             grupo: liceo ? 'LICEO' : undefined,
+            filtroEtapa,
             liceoIds: liceo ? [liceo] : undefined,
             reenviar: reenviar ? origen : undefined,
             base: base ? origen : desdePlantilla,

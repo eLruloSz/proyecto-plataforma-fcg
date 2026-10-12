@@ -25,7 +25,23 @@ export interface SolicitudEnvio {
   envioOrigenId?: string;
   /** Destinatarios que el usuario quitó de la lista antes de enviar (ids de liceo o postulación). */
   excluir?: string[];
+  /**
+   * POSTULANTES: elegir estudiantes según una etapa.
+   *  EN_ETAPA: los que están ahora en la etapa
+   *  FALTAN_REQUISITOS: los que están en la etapa y les falta algún requisito
+   *  PASA / NO_PASA: los que tienen ese resultado CONFIRMADO en la etapa
+   * soloSinAviso: (PASA / NO_PASA) solo a quienes aún no se les avisó.
+   */
+  filtroEtapa?: FiltroEtapa;
 }
+
+export interface FiltroEtapa {
+  etapaId: string;
+  tipo: 'EN_ETAPA' | 'FALTAN_REQUISITOS' | 'PASA' | 'NO_PASA';
+  soloSinAviso?: boolean;
+}
+
+const ESTADOS_FUERA = ['NO_CONTINUA', 'DESISTIO'];
 
 interface Destinatario {
   clave: string; // liceo_id o postulacion_id: identifica la fila en la lista
@@ -37,6 +53,8 @@ interface Destinatario {
   liceo: string;
   codigo?: string;
   curso?: string;
+  estudiantes?: string;
+  pendientes?: string;
 }
 
 interface Excluido {
@@ -88,7 +106,15 @@ export class EnviosService {
     const excluidos: Excluido[] = [];
     const quitar = new Set(s.excluir ?? []);
 
+    if (grupo === 'POSTULANTES' && s.filtroEtapa && !s.envioOrigenId) {
+      postulacionIds = await this.idsPorEtapa(s.filtroEtapa, procesoId);
+      if (s.postulacionIds) postulacionIds = postulacionIds.filter((id) => s.postulacionIds!.includes(id));
+      if (!postulacionIds.length) return { grupo, destinatarios, excluidos };
+    }
+
     if (grupo === 'POSTULANTES') {
+      // Los que ya no siguen en el proceso solo reciben el aviso de que no pasaron.
+      const permitirFuera = s.filtroEtapa?.tipo === 'NO_PASA';
       const filasP = await this.ds.query(
         `SELECT p.id, p.codigo, p.curso, p.estado, l.id AS liceo_id, l.nombre AS liceo,
                 pe.nombres, pe.apellido_paterno, pe.email
@@ -100,7 +126,8 @@ export class EnviosService {
       for (const r of filasP) {
         const nombre = `${r.nombres} ${r.apellido_paterno}`;
         const base = { clave: r.id, nombre, liceo: r.liceo };
-        if (r.estado === 'DESISTIO') excluidos.push({ ...base, motivo: 'Rechazó la invitación' });
+        if (r.estado === 'DESISTIO' && !permitirFuera) excluidos.push({ ...base, motivo: 'Rechazó la invitación' });
+        else if (r.estado === 'NO_CONTINUA' && !permitirFuera) excluidos.push({ ...base, motivo: 'Ya no continúa en el proceso' });
         else if (!r.email) excluidos.push({ ...base, motivo: 'Sin email registrado' });
         else if (quitar.has(r.id)) excluidos.push({ ...base, motivo: 'Quitado de la lista' });
         else destinatarios.push({ ...base, liceoId: r.liceo_id, postulacionId: r.id, cargo: null, email: r.email, codigo: r.codigo, curso: r.curso });
@@ -133,6 +160,88 @@ export class EnviosService {
     return { grupo, destinatarios, excluidos };
   }
 
+  private async idsPorEtapa(f: FiltroEtapa, procesoId: string): Promise<string[]> {
+    const [e] = await this.ds.query(`SELECT 1 FROM etapas WHERE id = $1 AND proceso_id = $2`, [f.etapaId, procesoId]);
+    if (!e) throw new NotFoundException('Etapa no encontrada.');
+    let sql: string;
+    if (f.tipo === 'EN_ETAPA' || f.tipo === 'FALTAN_REQUISITOS') {
+      sql = `SELECT p.id FROM postulaciones p
+              WHERE p.etapa_id = $1 AND p.estado NOT IN ('NO_CONTINUA', 'DESISTIO')`;
+      if (f.tipo === 'FALTAN_REQUISITOS') {
+        sql += ` AND EXISTS (SELECT 1 FROM requisitos_etapa q WHERE q.etapa_id = $1 AND q.activo
+                   AND NOT EXISTS (SELECT 1 FROM cumplimientos c WHERE c.requisito_id = q.id AND c.postulacion_id = p.id))`;
+      }
+      return (await this.ds.query(sql, [f.etapaId])).map((r: any) => r.id);
+    }
+    sql = `SELECT r.postulacion_id AS id FROM resultados_etapa r
+            WHERE r.etapa_id = $1 AND r.confirmado AND r.resultado = $2 ${f.soloSinAviso ? 'AND r.avisado_en IS NULL' : ''}`;
+    return (await this.ds.query(sql, [f.etapaId, f.tipo])).map((r: any) => r.id);
+  }
+
+  /**
+   * Texto de {{estudiantes}} para cada liceo: una línea por estudiante con su
+   * Id, etapa y lo que le falta. Es lo que la contraparte necesita para
+   * ayudar a los estudiantes a completar su postulación.
+   */
+  private async estudiantesPorLiceo(liceoIds: string[], procesoId: string): Promise<Map<string, string>> {
+    const filasE = await this.ds.query(
+      `SELECT p.liceo_id, p.codigo, p.curso, p.estado, p.confirmacion, et.nombre AS etapa, et.orden,
+              pe.nombres, pe.apellido_paterno, pe.apellido_materno,
+              COALESCE((SELECT array_agg(q.nombre ORDER BY q.orden) FROM requisitos_etapa q
+                         WHERE q.etapa_id = p.etapa_id AND q.activo
+                           AND NOT EXISTS (SELECT 1 FROM cumplimientos c WHERE c.requisito_id = q.id AND c.postulacion_id = p.id)),
+                       '{}'::varchar[]) AS faltan
+         FROM postulaciones p
+         JOIN personas pe ON pe.id = p.persona_id
+         LEFT JOIN etapas et ON et.id = p.etapa_id
+        WHERE p.proceso_id = $1 AND p.liceo_id = ANY($2::uuid[])
+        ORDER BY p.correlativo`,
+      [procesoId, liceoIds]);
+    const porLiceo = new Map<string, string[]>();
+    for (const r of filasE) {
+      const nombre = `${r.apellido_paterno}${r.apellido_materno ? ' ' + r.apellido_materno : ''}, ${r.nombres}`;
+      let situacion: string;
+      if (r.estado === 'DESISTIO') situacion = 'No aceptó la invitación.';
+      else if (r.estado === 'NO_CONTINUA') situacion = `No continúa en el proceso (llegó hasta: ${r.etapa}).`;
+      else if (r.estado === 'BECARIO') situacion = 'Seleccionado/a como becario/a.';
+      else {
+        situacion = `Etapa actual: ${r.etapa}.`;
+        if (r.orden === 1 && r.confirmacion === 'PENDIENTE') situacion += ' Aún no confirma su interés en postular.';
+        if (r.faltan.length) situacion += ` Le falta: ${r.faltan.join(', ')}.`;
+      }
+      const linea = `• ${r.codigo} — ${nombre} (${r.curso}). ${situacion}`;
+      if (!porLiceo.has(r.liceo_id)) porLiceo.set(r.liceo_id, []);
+      porLiceo.get(r.liceo_id)!.push(linea);
+    }
+    const out = new Map<string, string>();
+    for (const id of liceoIds) out.set(id, porLiceo.get(id)?.join('\n') ?? '(Este liceo aún no tiene estudiantes invitados.)');
+    return out;
+  }
+
+  /** Agrega el texto de {{estudiantes}} a cada destinatario-liceo si la plantilla lo usa. */
+  private async completarEstudiantes(s: SolicitudEnvio, grupo: Grupo, destinatarios: Destinatario[], procesoId: string) {
+    if (grupo === 'POSTULANTES' || !/\{\{\s*estudiantes\s*\}\}/i.test(s.asunto + s.cuerpo)) return;
+    const mapa = await this.estudiantesPorLiceo(destinatarios.map((d) => d.liceoId!).filter(Boolean), procesoId);
+    for (const d of destinatarios) d.estudiantes = mapa.get(d.liceoId!) ?? '';
+  }
+
+  /** Agrega {{documentos_pendientes}} a cada estudiante si el correo lo usa. */
+  private async completarPendientes(s: SolicitudEnvio, grupo: Grupo, destinatarios: Destinatario[]) {
+    if (grupo !== 'POSTULANTES' || !/\{\{\s*documentos_pendientes\s*\}\}/i.test(s.asunto + s.cuerpo)) return;
+    const ids = destinatarios.map((d) => d.postulacionId!).filter(Boolean);
+    const filasP = await this.ds.query(
+      `SELECT p.id, COALESCE((SELECT array_agg(q.nombre ORDER BY q.orden) FROM requisitos_etapa q
+                               WHERE q.etapa_id = p.etapa_id AND q.activo
+                                 AND NOT EXISTS (SELECT 1 FROM cumplimientos c WHERE c.requisito_id = q.id AND c.postulacion_id = p.id)),
+                             '{}'::varchar[]) AS faltan
+         FROM postulaciones p WHERE p.id = ANY($1::uuid[])`, [ids]);
+    const mapa = new Map<string, string[]>(filasP.map((r: any) => [r.id, r.faltan]));
+    for (const d of destinatarios) {
+      const f = mapa.get(d.postulacionId!) ?? [];
+      d.pendientes = f.length ? f.map((x) => `• ${x}`).join('\n') : '(No tienes documentos pendientes.)';
+    }
+  }
+
   private async valoresComunes(usuarioId: string) {
     const p = await this.proceso.obtener();
     const [u] = await this.ds.query(`SELECT email, nombre_completo, firma FROM usuarios WHERE id = $1`, [usuarioId]);
@@ -140,7 +249,10 @@ export class EnviosService {
   }
 
   private renderizar(d: Destinatario, s: SolicitudEnvio, comunes: Record<string, string>) {
-    const vars = { ...comunes, nombre: d.nombre, cargo: d.cargo ?? '', liceo: d.liceo, codigo: d.codigo ?? '', curso: d.curso ?? '' };
+    const vars = {
+      ...comunes, nombre: d.nombre, cargo: d.cargo ?? '', liceo: d.liceo, codigo: d.codigo ?? '', curso: d.curso ?? '',
+      estudiantes: d.estudiantes ?? '', documentos_pendientes: d.pendientes ?? '',
+    };
     return { asunto: reemplazarVariables(s.asunto, vars), cuerpo: reemplazarVariables(s.cuerpo, vars) };
   }
 
@@ -148,6 +260,8 @@ export class EnviosService {
   async previsualizar(s: SolicitudEnvio, usuarioId: string) {
     const { proceso, comunes } = await this.valoresComunes(usuarioId);
     const { grupo, destinatarios, excluidos } = await this.resolver(s, proceso.id);
+    await this.completarEstudiantes(s, grupo, destinatarios, proceso.id);
+    await this.completarPendientes(s, grupo, destinatarios);
     const advertencias: string[] = [];
     const desconocidas = variablesDesconocidas(`${s.asunto} ${s.cuerpo}`);
     if (desconocidas.length) {
@@ -155,6 +269,9 @@ export class EnviosService {
     }
     if (grupo !== 'POSTULANTES' && /\{\{\s*(codigo|curso)\s*\}\}/i.test(s.cuerpo + s.asunto)) {
       advertencias.push('{{codigo}} y {{curso}} solo tienen valor en correos a estudiantes.');
+    }
+    if (grupo === 'POSTULANTES' && /\{\{\s*estudiantes\s*\}\}/i.test(s.cuerpo + s.asunto)) {
+      advertencias.push('{{estudiantes}} solo tiene valor en correos a liceos.');
     }
     return {
       grupo,
@@ -172,6 +289,8 @@ export class EnviosService {
     const { proceso, usuario, comunes } = await this.valoresComunes(usuarioId);
     const { grupo, destinatarios } = await this.resolver(s, proceso.id);
     if (!destinatarios.length) throw new BadRequestException('No hay destinatarios con email para este envío.');
+    await this.completarEstudiantes(s, grupo, destinatarios, proceso.id);
+    await this.completarPendientes(s, grupo, destinatarios);
 
     const adjuntoIds = [...new Set(s.adjuntoIds ?? [])];
     for (const id of adjuntoIds) await this.archivos.obtener(id); // valida que existan
@@ -204,8 +323,16 @@ export class EnviosService {
           [envio.id, d.liceoId, d.postulacionId, d.nombre, d.email, r.asunto.slice(0, 300), r.cuerpo],
         );
       }
+      // Aviso de resultado: queda registrado a quiénes ya se les avisó.
+      const f = s.filtroEtapa;
+      if (f && (f.tipo === 'PASA' || f.tipo === 'NO_PASA')) {
+        await em.query(
+          `UPDATE resultados_etapa SET avisado_en = NOW()
+            WHERE etapa_id = $1 AND resultado = $2 AND confirmado AND postulacion_id = ANY($3::uuid[])`,
+          [f.etapaId, f.tipo, destinatarios.map((d) => d.postulacionId)]);
+      }
       await this.auditoria.registrar(usuarioId, 'ENVIAR_CORREO', 'envios', envio.id,
-        { grupo, proposito, total: destinatarios.length }, em);
+        { grupo, proposito, total: destinatarios.length, filtroEtapa: f ?? null }, em);
       return envio.id as string;
     });
 
