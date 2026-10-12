@@ -6,8 +6,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength,
+  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { timingSafeEqual } from 'crypto';
 import type { Response } from 'express';
 import { EnviosService } from './envios.service';
@@ -17,7 +18,7 @@ import { VARIABLES } from './variables';
 import { ArchivosService, TAMANO_MAXIMO } from '../common/archivos.service';
 import { Publico, Usuario, UsuarioSesion } from '../auth/public.decorator';
 
-const PROPOSITOS = ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AVISO_RESULTADO', 'AGRADECIMIENTO', 'OTRO'];
+const PROPOSITOS = ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AVISO_RESULTADO', 'AGRADECIMIENTO', 'INFORME_LICEO', 'OTRO'];
 
 class PlantillaDto {
   @IsString() @MinLength(1) @MaxLength(200) nombre: string;
@@ -31,6 +32,11 @@ class EditarPlantillaDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(300) asunto?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(50000) cuerpo?: string;
 }
+class FiltroEtapaDto {
+  @IsUUID() etapaId: string;
+  @IsIn(['EN_ETAPA', 'FALTAN_REQUISITOS', 'PASA', 'NO_PASA']) tipo: 'EN_ETAPA' | 'FALTAN_REQUISITOS' | 'PASA' | 'NO_PASA';
+  @IsOptional() @IsBoolean() soloSinAviso?: boolean;
+}
 class EnvioDto {
   @IsIn(['CONTRAPARTES', 'DIRECTORES', 'LICEO', 'POSTULANTES']) grupo: 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
   @IsOptional() @IsIn(PROPOSITOS) proposito?: string;
@@ -42,6 +48,7 @@ class EnvioDto {
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) postulacionIds?: string[];
   @IsOptional() @IsUUID() envioOrigenId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) excluir?: string[];
+  @IsOptional() @ValidateNested() @Type(() => FiltroEtapaDto) filtroEtapa?: FiltroEtapaDto;
 }
 class AsociarAdjuntoDto {
   @IsUUID() archivoId: string;

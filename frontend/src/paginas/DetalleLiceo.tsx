@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, Contacto, Liceo, Nomina, Participacion, Previsualizacion } from '../api';
-import { Caja, Cargando, Etiqueta, ErrorCarga, fecha, Modal, nota, useAviso } from '../ui';
+import { api, Contacto, Invitado, Liceo, Nomina, Participacion, Previsualizacion } from '../api';
+import { Caja, Cargando, Etiqueta, ErrorCarga, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 
 // ---------------------------------------------------------------------------
 // Contactos
@@ -283,6 +283,61 @@ function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
 // ---------------------------------------------------------------------------
 // Página
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Seguimiento de los estudiantes del liceo (lo que se informa a la contraparte)
+
+function EstudiantesLiceo({ liceo }: { liceo: Liceo }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['invitados', { liceoId: liceo.id }],
+    queryFn: () => api.get<Invitado[]>(`/invitados?liceoId=${liceo.id}`),
+  });
+  if (isLoading) return <Cargando />;
+  if (error) return <ErrorCarga error={error} />;
+  const lista = data ?? [];
+  const activos = lista.filter((i) => !['NO_CONTINUA', 'DESISTIO'].includes(i.estado) && i.confirmacion !== 'RECHAZADO');
+  const conFaltantes = activos.filter((i) => i.faltan.length > 0).length;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-gray-600">
+          {lista.length} invitado{lista.length === 1 ? '' : 's'} · {activos.length} siguen en el proceso
+          {conFaltantes > 0 && <> · <span className="text-yellow-700">{conFaltantes} con documentos pendientes</span></>}
+        </p>
+        <Link className={`btn-primario ${lista.length ? '' : 'pointer-events-none opacity-50'}`}
+          to={`/comunicacion?liceo=${liceo.id}&proposito=INFORME_LICEO`}
+          title={liceo.contraparte?.email ? `Se envía a ${liceo.contraparte.email}` : 'La contraparte no tiene email'}>
+          Enviar informe a la contraparte
+        </Link>
+      </div>
+      {!liceo.contraparte?.email && lista.length > 0 && (
+        <Caja tono="amarillo">La contraparte de este liceo no tiene email registrado: agrégalo arriba para poder enviarle el informe.</Caja>
+      )}
+      <div className="tarjeta overflow-x-auto">
+        <table className="tabla">
+          <thead><tr><th>Id</th><th>Estudiante</th><th>Curso</th><th>Aceptó postular</th><th>Situación actual</th></tr></thead>
+          <tbody>
+            {lista.length === 0 && <tr><td colSpan={5}><Vacio>Este liceo aún no tiene estudiantes invitados.</Vacio></td></tr>}
+            {lista.map((i) => (
+              <tr key={i.id}>
+                <td className="font-mono text-xs">{i.codigo}</td>
+                <td className="whitespace-nowrap">{i.apellido_paterno} {i.apellido_materno}, {i.nombres}</td>
+                <td>{i.curso}</td>
+                <td>
+                  {i.confirmacion === 'CONFIRMADO' && <Etiqueta tono="verde">Sí</Etiqueta>}
+                  {i.confirmacion === 'RECHAZADO' && <Etiqueta tono="gris">No</Etiqueta>}
+                  {i.confirmacion === 'PENDIENTE' && <Etiqueta tono="amarillo">Sin respuesta</Etiqueta>}
+                </td>
+                <td><EstadoEnProceso i={i} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400">El informe usa la plantilla “Informe de estudiantes para la contraparte”: la variable {'{{estudiantes}}'} se reemplaza por esta lista al momento de enviar.</p>
+    </div>
+  );
+}
+
 export function DetalleLiceo() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -326,6 +381,11 @@ export function DetalleLiceo() {
       <section>
         <h2 className="subtitulo mb-3">Nómina de notas e invitados</h2>
         <SeleccionInvitados liceo={liceo} />
+      </section>
+
+      <section>
+        <h2 className="subtitulo mb-3">Seguimiento de estudiantes</h2>
+        <EstudiantesLiceo liceo={liceo} />
       </section>
     </div>
   );

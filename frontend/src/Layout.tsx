@@ -9,6 +9,7 @@ const MENU = [
   { a: '/', texto: 'Dashboard', fin: true },
   { a: '/liceos', texto: 'Liceos y nóminas' },
   { a: '/invitados', texto: 'Invitados' },
+  { a: '/avance', texto: 'Avance por etapa' },
   { a: '/comunicacion', texto: 'Comunicación' },
   { a: '/seguimiento', texto: 'Seguimiento por liceo' },
 ];

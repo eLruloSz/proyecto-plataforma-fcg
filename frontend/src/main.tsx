@@ -15,6 +15,7 @@ import { Invitados } from './paginas/Invitados';
 import { Comunicacion } from './paginas/Comunicacion';
 import { DetalleEnvio } from './paginas/DetalleEnvio';
 import { Perfil } from './paginas/Perfil';
+import { Avance } from './paginas/Avance';
 
 const cliente = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -34,6 +35,8 @@ function Rutas() {
         <Route path="invitados" element={<Invitados />} />
         <Route path="comunicacion" element={<Comunicacion />} />
         <Route path="comunicacion/envios/:id" element={<DetalleEnvio />} />
+        <Route path="avance" element={<Avance />} />
+        <Route path="avance/:etapaId" element={<Avance />} />
         <Route path="perfil" element={<Perfil />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Route>

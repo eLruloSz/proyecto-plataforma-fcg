@@ -13,6 +13,7 @@ import { NominasModule } from './nominas/nominas.module';
 import { InvitadosModule } from './invitados/invitados.module';
 import { ComunicacionModule } from './comunicacion/comunicacion.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AvanceModule } from './avance/avance.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     InvitadosModule,
     ComunicacionModule,
     DashboardModule,
+    AvanceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -104,3 +104,23 @@ export function fecha(iso: string | null | undefined, conHora = true) {
 export const nota = (n: number | null | undefined) => (n === null || n === undefined ? '—' : Number(n).toFixed(2).replace('.', ','));
 export const nombreCompleto = (x: { nombres: string; apellido_paterno: string; apellido_materno?: string | null }) =>
   `${x.apellido_paterno}${x.apellido_materno ? ' ' + x.apellido_materno : ''}, ${x.nombres}`;
+
+/** Dónde va un estudiante: etapa actual, resultado y documentos que le faltan. */
+export function EstadoEnProceso({ i }: {
+  i: { estado: string; confirmacion: string; etapa: string | null; etapa_orden: number | null; resultado_etapa: 'PASA' | 'NO_PASA' | null; resultado_confirmado: boolean; faltan: string[] };
+}) {
+  if (i.estado === 'BECARIO') return <Etiqueta tono="verde">Becario/a</Etiqueta>;
+  if (i.estado === 'DESISTIO' || i.confirmacion === 'RECHAZADO') return <Etiqueta tono="gris">No postula</Etiqueta>;
+  if (i.estado === 'NO_CONTINUA') return <span><Etiqueta tono="rojo">No continúa</Etiqueta>{i.etapa && <span className="ml-1 text-xs text-gray-400">({i.etapa})</span>}</span>;
+  return (
+    <div className="min-w-[140px]">
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-sm">{i.etapa_orden ? `${i.etapa_orden}. ` : ''}{i.etapa ?? '—'}</span>
+        {i.resultado_etapa && !i.resultado_confirmado && (
+          <Etiqueta tono={i.resultado_etapa === 'PASA' ? 'azul' : 'amarillo'}>{i.resultado_etapa === 'PASA' ? 'marcado: pasa' : 'marcado: no pasa'}</Etiqueta>
+        )}
+      </div>
+      {i.faltan.length > 0 && <div className="text-xs text-yellow-700">Falta: {i.faltan.join(', ')}</div>}
+    </div>
+  );
+}

@@ -41,6 +41,8 @@ export class InvitadosService {
     const creados = await this.ds.transaction(async (em) => {
       const [p] = await em.query(
         `SELECT sufijo_id, ultimo_correlativo FROM procesos WHERE id = $1 FOR UPDATE`, [procesoId]);
+      // Los invitados parten en la primera etapa del proceso.
+      const [primera] = await em.query(`SELECT id FROM etapas WHERE proceso_id = $1 ORDER BY orden LIMIT 1`, [procesoId]);
 
       const alumnos = await em.query(
         `SELECT a.*, l.codigo AS liceo_codigo, p.codigo AS ya_invitado
@@ -71,9 +73,9 @@ export class InvitadosService {
         );
         const [post] = await em.query(
           `INSERT INTO postulaciones (proceso_id, persona_id, liceo_id, alumno_nomina_id, codigo, correlativo,
-                                      curso, promedio, posicion_curso)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [procesoId, persona.id, a.liceo_id, a.id, codigo, correlativo, a.curso, a.promedio, a.posicion_curso],
+                                      curso, promedio, posicion_curso, etapa_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [procesoId, persona.id, a.liceo_id, a.id, codigo, correlativo, a.curso, a.promedio, a.posicion_curso, primera?.id ?? null],
         );
         resultado.push({ id: post.id, codigo, nombre: `${a.nombres} ${a.apellido_paterno}` });
       }
@@ -104,10 +106,18 @@ export class InvitadosService {
               p.encuentro_evento_id, p.asistio_encuentro,
               pe.nombres, pe.apellido_paterno, pe.apellido_materno, pe.email, pe.telefono, pe.rut,
               l.id AS liceo_id, l.codigo AS liceo_codigo, l.nombre AS liceo,
-              (SELECT COUNT(*)::int FROM comentarios_postulacion c WHERE c.postulacion_id = p.id) AS comentarios
+              (SELECT COUNT(*)::int FROM comentarios_postulacion c WHERE c.postulacion_id = p.id) AS comentarios,
+              p.etapa_id, et.nombre AS etapa, et.orden AS etapa_orden,
+              r.resultado AS resultado_etapa, COALESCE(r.confirmado, FALSE) AS resultado_confirmado,
+              COALESCE((SELECT array_agg(q.nombre ORDER BY q.orden) FROM requisitos_etapa q
+                         WHERE q.etapa_id = p.etapa_id AND q.activo
+                           AND NOT EXISTS (SELECT 1 FROM cumplimientos c WHERE c.requisito_id = q.id AND c.postulacion_id = p.id)),
+                       '{}'::varchar[]) AS faltan
          FROM postulaciones p
          JOIN personas pe ON pe.id = p.persona_id
          JOIN liceos l ON l.id = p.liceo_id
+         LEFT JOIN etapas et ON et.id = p.etapa_id
+         LEFT JOIN resultados_etapa r ON r.postulacion_id = p.id AND r.etapa_id = p.etapa_id
         WHERE ${cond.join(' AND ')}
         ORDER BY p.correlativo`,
       params,

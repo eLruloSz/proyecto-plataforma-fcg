@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Confirmacion, Encuentro, Invitado } from '../api';
-import { Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
+import { Cargando, ErrorCarga, Etiqueta, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 
 function useActualizar() {
   const qc = useQueryClient();
@@ -132,11 +132,11 @@ export function Invitados() {
             <tr>
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th>Curso</th><th className="text-right">Prom.</th>
               <th className="min-w-[180px]">Email</th><th className="min-w-[120px]">Teléfono</th>
-              <th>Aceptó postular</th><th>Encuentro online</th><th>Asistió</th><th />
+              <th>Aceptó postular</th><th>Encuentro online</th><th>Asistió</th><th>Etapa</th><th />
             </tr>
           </thead>
           <tbody>
-            {lista.length === 0 && <tr><td colSpan={11}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
+            {lista.length === 0 && <tr><td colSpan={12}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
             {lista.map((i) => (
               <tr key={i.id} className={i.confirmacion === 'RECHAZADO' ? 'text-gray-400' : ''}>
                 <td className="font-mono text-xs">{i.codigo}</td>
@@ -164,6 +164,7 @@ export function Invitados() {
                 <td className="text-center">
                   <input type="checkbox" checked={!!i.asistio_encuentro} onChange={(e) => set(i.id, { asistioEncuentro: e.target.checked })} aria-label="Asistió al encuentro" />
                 </td>
+                <td><EstadoEnProceso i={i} /></td>
                 <td className="whitespace-nowrap text-right">
                   <button className="text-xs text-gray-500 hover:text-gray-900" onClick={() => setComentando(i)}>
                     {i.comentarios ? <Etiqueta tono="azul">{i.comentarios} coment.</Etiqueta> : 'Comentar'}

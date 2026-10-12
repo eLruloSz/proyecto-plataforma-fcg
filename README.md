@@ -4,7 +4,9 @@ Plataforma para la Fundación Carmen Goudie: gestiona la invitación a liceos, l
 recepción de nóminas de notas, la selección de invitados y la comunicación por
 correo del proceso de selección de becarios.
 
-**Estado:** etapa 1 (Invitación a establecimientos) completa de punta a punta.
+**Estado:** etapa 1 (Invitación a establecimientos) completa de punta a punta, más el
+avance entre etapas (requisitos, pasa/no pasa con confirmación, avisos), la alerta de
+pendientes en el dashboard y el informe por liceo para la contraparte.
 
 | Carpeta | Contenido |
 |---|---|
@@ -46,7 +48,18 @@ errores a propósito para ver cómo se muestran antes de confirmar.
 **Sin instalar Node** (todo en contenedores): `docker compose --profile app up -d --build`
 y abrir <http://localhost:8080>.
 
+La base queda en el puerto **5433** de tu máquina (no el 5432 habitual), para no
+chocar con un PostgreSQL que ya tengas instalado. Si también está ocupado:
+`DB_PORT=5434 docker compose up -d` y ajusta `DATABASE_URL` en `backend/.env`.
+
 **Volver a cargar la base desde cero** (borra todo): `docker compose down -v && docker compose up -d`.
+
+**Actualizar una base que ya tenías** (sin borrar datos): las bases creadas antes del
+avance por etapas necesitan la migración 03, que se puede aplicar más de una vez sin problema:
+
+```bash
+docker exec -i becas-db psql -U becas -d becas < db/03_avance_etapas.sql
+```
 
 ## Flujo de la etapa 1
 
@@ -73,6 +86,41 @@ y abrir <http://localhost:8080>.
 El **Seguimiento por liceo** reemplaza la planilla con semáforo: los hitos se
 marcan solos cuando el sistema puede saberlo (correo enviado, respuesta
 marcada, nómina subida) y se pueden marcar a mano con un clic.
+
+## Avance entre etapas
+
+Cada etapa tiene su propia configuración: nombre, **cupo** y **requisitos**
+(documentos o pasos que cada estudiante debe cumplir, por ejemplo formulario,
+cartola RSH, certificado de notas). Se configuran en *Avance por etapa →
+Configurar etapas* y en el botón *Requisitos* de cada etapa. También se puede
+**agregar una etapa entre dos existentes** o eliminar una que esté vacía.
+
+En *Avance por etapa*:
+
+1. Se marca por estudiante qué requisitos cumplió (casillas).
+2. Se marca **Pasa / No pasa**. Son marcas provisorias: nada cambia hasta
+   apretar **Confirmar avance**, que muestra la lista de quiénes pasan y quiénes
+   no (y avisa si se supera el cupo) antes de aplicar.
+3. Al confirmar, los que pasan quedan en la etapa siguiente y los que no, fuera
+   del proceso. Una confirmación se puede deshacer mientras el estudiante no
+   tenga resultados en la etapa siguiente.
+4. *Avisar a los que pasan / no pasan* abre un correo solo para los que aún no
+   han sido avisados; al enviarlo quedan marcados como avisados.
+   *Recordar requisitos pendientes* escribe solo a quienes les falta algo, y la
+   variable `{{documentos_pendientes}}` pone la lista de lo que le falta a cada uno.
+
+En la etapa 1, *Marcar según respuesta a la invitación* marca "pasa" a quienes
+aceptaron postular y "no pasa" a quienes rechazaron.
+
+**Dashboard:** el recuadro *Pendientes* reúne lo que requiere acción —
+estudiantes con documentos pendientes (por requisito), decisiones sin
+confirmar, resultados sin avisar, invitados sin respuesta, sin email y correos
+rebotados—, cada uno con enlace a donde se resuelve.
+
+**Informe por liceo:** en la ficha de cada liceo, *Seguimiento de estudiantes*
+muestra en qué etapa va cada uno y qué le falta. *Enviar informe a la
+contraparte* usa la plantilla con `{{estudiantes}}`, que se reemplaza por esa
+lista al enviar.
 
 ## Decisiones de diseño
 
@@ -101,12 +149,16 @@ marcada, nómina subida) y se pueden marcar a mano con un clic.
 cd backend
 npm test                          # lector de nóminas con la plantilla real (13 pruebas)
 node test/flujo-etapa1.mjs        # recorrido completo contra la API (base recién cargada)
+node test/flujo-avance.mjs        # avance entre etapas (correr después del anterior)
 ```
 
 `flujo-etapa1.mjs` recorre el proceso completo: login, correo de presentación,
 respuestas, recordatorio, solicitud con adjunto, carga de nóminas con errores,
 invitación y generación de Id, datos de contacto, webhook de rebote, dashboard
-y cambio de etapa.
+y cambio de etapa. `flujo-avance.mjs` sigue desde ahí: marcar según la
+invitación, confirmar, deshacer, avisos solo a los no avisados, requisitos,
+recordatorio a quienes les faltan documentos, alerta del dashboard, informe por
+liceo y agregar/editar/eliminar etapas.
 
 ## Producción
 
@@ -122,6 +174,11 @@ y cambio de etapa.
   `EXECUTE FUNCTION`. Confirmar la versión con `SELECT version();` antes de desplegar.
 
 ## Pendiente (siguientes etapas)
+
+- Datos de la etapa de postulación por estudiante: % RSH, tramo, personas con
+  invalidez o que requieren apoyo, y comparación de integrantes del hogar
+  (formulario vs. RSH) — a la espera de definir el detalle con la fundación
+- Posible etapa adicional entre la 2 y la 3 (el sistema ya permite insertarla)
 
 - Carga del Excel de puntajes y vista del ranking (Preselección N°1)
 - Cortes del ranking, entrevistas con la pauta de entrevista y selección final

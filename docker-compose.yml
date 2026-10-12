@@ -19,12 +19,15 @@ services:
       POSTGRES_USER: becas
       POSTGRES_PASSWORD: becas_dev_password
     ports:
-      - "5432:5432"
+      # Puerto 5433 en tu máquina para no chocar con un Postgres que ya tengas
+      # instalado (que suele usar el 5432). Se puede cambiar con DB_PORT.
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - becas_db:/var/lib/postgresql/data
       # Se ejecutan solo la primera vez que se crea el volumen.
       - ./db/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./db/02_datos_demo.sql:/docker-entrypoint-initdb.d/02_datos_demo.sql:ro
+      - ./db/03_avance_etapas.sql:/docker-entrypoint-initdb.d/03_avance_etapas.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s
