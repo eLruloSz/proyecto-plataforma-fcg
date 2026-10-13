@@ -352,7 +352,10 @@ export class EnviosService {
       const pendientes = await this.ds.query(
         `SELECT id, liceo_id, email, asunto_final, cuerpo_final FROM envio_destinatarios
           WHERE envio_id = $1 AND entrega = 'PENDIENTE'`, [envioId]);
-      const hito = grupo !== 'POSTULANTES' ? HITO_POR_PROPOSITO[proposito] : undefined;
+      // A los postulantes solo se les marca hito (en su liceo) con la invitación;
+      // el resto de los correos a estudiantes no corresponde a ningún hito del liceo.
+      const hito = grupo !== 'POSTULANTES' || proposito === 'INVITACION_ESTUDIANTES'
+        ? HITO_POR_PROPOSITO[proposito] : undefined;
 
       for (const d of pendientes) {
         try {

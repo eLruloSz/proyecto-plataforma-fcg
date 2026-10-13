@@ -72,7 +72,7 @@ export const api = {
 // ---------------------------------------------------------------------------
 
 export interface Etapa {
-  id: string; orden: number; nombre: string; descripcion: string | null; estado: 'PENDIENTE' | 'ACTIVA' | 'CERRADA';
+  id: string; orden: number; nombre: string; descripcion: string | null; estado: 'PENDIENTE' | 'ACTIVA' | 'CERRADA'; clave: string | null;
   fecha_inicio: string | null; fecha_fin: string | null; cupo: number | null; estudiantes: number; requisitos: number;
 }
 export interface Proceso { id: string; nombre: string; anio: number; sufijo_id: string; ultimo_correlativo: number; etapas: Etapa[] }
