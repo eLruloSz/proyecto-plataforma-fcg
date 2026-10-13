@@ -172,6 +172,13 @@ export class InvitadosService {
           pset('estado', dto.confirmacion === 'CONFIRMADO' ? 'CONFIRMADO' : dto.confirmacion === 'RECHAZADO' ? 'DESISTIO' : 'INVITADO');
         }
       }
+      if (dto.encuentroEventoId !== undefined || dto.asistioEncuentro !== undefined) {
+        // El encuentro online solo se registra desde que se llega a su etapa.
+        const [{ habilitado }] = await em.query(
+          `SELECT EXISTS (SELECT 1 FROM etapas WHERE proceso_id = $1 AND clave = 'ENCUENTRO' AND estado <> 'PENDIENTE') AS habilitado`,
+          [p.proceso_id]);
+        if (!habilitado) throw new BadRequestException('El encuentro online se habilita cuando se activa su etapa.');
+      }
       if (dto.encuentroEventoId !== undefined) {
         if (dto.encuentroEventoId) {
           const [ev] = await em.query(

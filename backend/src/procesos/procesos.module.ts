@@ -39,7 +39,7 @@ export class ProcesosService {
   async procesoActual() {
     const p = await this.actual.obtener();
     const etapas = await this.ds.query(
-      `SELECT e.id, e.orden, e.nombre, e.descripcion, e.estado, e.fecha_inicio, e.fecha_fin, e.cupo,
+      `SELECT e.id, e.orden, e.nombre, e.descripcion, e.estado, e.clave, e.fecha_inicio, e.fecha_fin, e.cupo,
               (SELECT COUNT(*)::int FROM postulaciones p WHERE p.etapa_id = e.id
                  AND p.estado NOT IN ('NO_CONTINUA', 'DESISTIO')) AS estudiantes,
               (SELECT COUNT(*)::int FROM requisitos_etapa r WHERE r.etapa_id = e.id AND r.activo) AS requisitos

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Confirmacion, Encuentro, Invitado } from '../api';
+import { useProceso } from '../Layout';
 import { Cargando, ErrorCarga, Etiqueta, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 
 function useActualizar() {
@@ -66,7 +67,11 @@ function Comentarios({ inv, onCerrar }: { inv: Invitado; onCerrar: () => void })
 
 export function Invitados() {
   const { data, isLoading, error } = useQuery({ queryKey: ['invitados'], queryFn: () => api.get<Invitado[]>('/invitados') });
-  const { data: encuentros } = useQuery({ queryKey: ['encuentros'], queryFn: () => api.get<Encuentro[]>('/encuentros') });
+  const { data: proceso } = useProceso();
+  // El encuentro online se "desbloquea" cuando su etapa está activa (amarillo) o terminada (verde).
+  const etapaEncuentro = proceso?.etapas.find((e) => e.clave === 'ENCUENTRO');
+  const conEncuentro = !!etapaEncuentro && etapaEncuentro.estado !== 'PENDIENTE';
+  const { data: encuentros } = useQuery({ queryKey: ['encuentros'], queryFn: () => api.get<Encuentro[]>('/encuentros'), enabled: conEncuentro });
   const actualizar = useActualizar();
   const qc = useQueryClient();
   const avisar = useAviso();
@@ -103,6 +108,9 @@ export function Invitados() {
             {data!.length} invitados · <span className="text-green-700">{cuenta('CONFIRMADO')} aceptaron</span> · <span className="text-yellow-700">{cuenta('PENDIENTE')} sin respuesta</span> · {cuenta('RECHAZADO')} rechazaron.
             Para invitar estudiantes, entra a un liceo en <Link to="/liceos" className="underline">Liceos y nóminas</Link>.
           </p>
+          {etapaEncuentro && !conEncuentro && (
+            <p className="mt-1 text-xs text-gray-400">El encuentro online y la asistencia se habilitan al activar la etapa «{etapaEncuentro.nombre}».</p>
+          )}
         </div>
         <div className="flex gap-2">
           <input className="input w-56" placeholder="Buscar por nombre o Id…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
@@ -116,7 +124,7 @@ export function Invitados() {
         </div>
       </div>
 
-      {encuentros && encuentros.length > 0 && (
+      {conEncuentro && encuentros && encuentros.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           {encuentros.map((e) => (
             <span key={e.id} className="rounded-md border border-gray-200 px-2 py-1 text-gray-600">
@@ -132,11 +140,11 @@ export function Invitados() {
             <tr>
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th>Curso</th><th className="text-right">Prom.</th>
               <th className="min-w-[180px]">Email</th><th className="min-w-[120px]">Teléfono</th>
-              <th>Aceptó postular</th><th>Encuentro online</th><th>Asistió</th><th>Etapa</th><th />
+              <th>Aceptó postular</th>{conEncuentro && <><th>Encuentro online</th><th>Asistió</th></>}<th>Etapa</th><th />
             </tr>
           </thead>
           <tbody>
-            {lista.length === 0 && <tr><td colSpan={12}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
+            {lista.length === 0 && <tr><td colSpan={conEncuentro ? 12 : 10}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
             {lista.map((i) => (
               <tr key={i.id} className={i.confirmacion === 'RECHAZADO' ? 'text-gray-400' : ''}>
                 <td className="font-mono text-xs">{i.codigo}</td>
@@ -154,6 +162,7 @@ export function Invitados() {
                     <option value="RECHAZADO">No</option>
                   </select>
                 </td>
+                {conEncuentro && (<>
                 <td>
                   <select className="rounded border border-gray-200 px-1.5 py-1 text-xs" value={i.encuentro_evento_id ?? ''}
                     onChange={(e) => set(i.id, { encuentroEventoId: e.target.value || null })} aria-label="Encuentro online">
@@ -164,6 +173,7 @@ export function Invitados() {
                 <td className="text-center">
                   <input type="checkbox" checked={!!i.asistio_encuentro} onChange={(e) => set(i.id, { asistioEncuentro: e.target.checked })} aria-label="Asistió al encuentro" />
                 </td>
+                </>)}
                 <td><EstadoEnProceso i={i} /></td>
                 <td className="whitespace-nowrap text-right">
                   <button className="text-xs text-gray-500 hover:text-gray-900" onClick={() => setComentando(i)}>
