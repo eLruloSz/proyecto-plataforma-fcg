@@ -58,6 +58,8 @@ export class AvanceService {
               l.id AS liceo_id, l.codigo AS liceo_codigo, l.nombre AS liceo,
               (p.etapa_id = $1) AS en_esta_etapa,
               r.resultado, COALESCE(r.confirmado, FALSE) AS confirmado, r.confirmado_en, r.avisado_en,
+              COALESCE(en.realizada, FALSE) AS entrevista_realizada,
+              en.fecha_hora AS entrevista_fecha, en.comentario AS entrevista_comentario,
               COALESCE((SELECT array_agg(c.requisito_id::text) FROM cumplimientos c
                          JOIN requisitos_etapa q ON q.id = c.requisito_id
                         WHERE c.postulacion_id = p.id AND q.etapa_id = $1 AND q.activo), '{}'::text[]) AS cumplidos
@@ -65,6 +67,7 @@ export class AvanceService {
          JOIN personas pe ON pe.id = p.persona_id
          JOIN liceos l ON l.id = p.liceo_id
          LEFT JOIN resultados_etapa r ON r.postulacion_id = p.id AND r.etapa_id = $1
+         LEFT JOIN entrevistas en ON en.postulacion_id = p.id AND en.etapa_id = $1
         WHERE p.etapa_id = $1 OR (r.confirmado AND r.etapa_id = $1)
         ORDER BY p.correlativo`,
       [etapaId]);
@@ -83,6 +86,9 @@ export class AvanceService {
       sin_avisar_no_pasa: estudiantes.filter((x: any) => x.confirmado && x.resultado === 'NO_PASA' && !x.avisado_en).length,
       con_requisitos_pendientes: requisitos.length
         ? activos.filter((x: any) => x.cumplidos.length < requisitos.length).length : 0,
+      // Solo tiene sentido en etapas de entrevista (clave ENTREVISTA / ENTREVISTA_COMITE),
+      // pero se calcula igual: no cuesta nada y el frontend decide si lo muestra.
+      sin_entrevistar: activos.filter((x: any) => !x.entrevista_realizada).length,
     };
     return { etapa: e, requisitos, estudiantes, resumen };
   }
@@ -175,6 +181,33 @@ export class AvanceService {
        RETURNING id`,
       [etapaId, usuarioId]);
     return { marcados: filas(r).length };
+  }
+
+  // -------------------------------------------------------------------------
+  // Entrevista (Fase 3: etapas con clave ENTREVISTA o ENTREVISTA_COMITE)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Se puede marcar/editar aunque el estudiante ya no esté en esta etapa
+   * (ej. ya avanzó a la siguiente): el programa no bloquea corregir datos de
+   * una etapa anterior, solo lo que realmente ya no tiene sentido cambiar
+   * (como un resultado confirmado, que tiene su propio candado en marcar()).
+   */
+  async marcarEntrevista(
+    etapaId: string, postulacionId: string,
+    realizada: boolean, fechaHora: string | null | undefined, comentario: string | undefined,
+    usuarioId: string,
+  ) {
+    await this.etapa(etapaId);
+    await this.postulacionDelProceso(postulacionId);
+    await this.ds.query(
+      `INSERT INTO entrevistas (postulacion_id, etapa_id, realizada, fecha_hora, comentario, marcado_por)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (postulacion_id, etapa_id) DO UPDATE
+         SET realizada = $3, fecha_hora = $4, comentario = $5, marcado_por = $6, actualizado_en = NOW()`,
+      [postulacionId, etapaId, realizada, fechaHora ?? null, comentario ?? null, usuarioId]);
+    await this.auditoria.registrar(usuarioId, 'MARCAR_ENTREVISTA', 'postulaciones', postulacionId, { etapaId, realizada });
+    return { ok: true };
   }
 
   // -------------------------------------------------------------------------
