@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { AvanceService } from './avance.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 
@@ -11,6 +11,11 @@ class ResultadoDto {
 }
 class ConfirmarDto {
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) postulacionIds?: string[];
+}
+class EntrevistaDto {
+  @IsBoolean() realizada: boolean;
+  @IsOptional() @ValidateIf((o) => o.fechaHora !== null) @IsISO8601() fechaHora?: string | null;
+  @IsOptional() @IsString() @MaxLength(2000) comentario?: string;
 }
 
 @ApiTags('avance')
@@ -47,6 +52,15 @@ export class AvanceController {
   @HttpCode(200)
   sugerir(@Param('etapaId', ParseUUIDPipe) etapaId: string, @Usuario() u: UsuarioSesion) {
     return this.svc.sugerirDesdeConfirmacion(etapaId, u.id);
+  }
+
+  @Put('estudiantes/:postulacionId/entrevista')
+  entrevista(
+    @Param('etapaId', ParseUUIDPipe) etapaId: string,
+    @Param('postulacionId', ParseUUIDPipe) postulacionId: string,
+    @Body() dto: EntrevistaDto, @Usuario() u: UsuarioSesion,
+  ) {
+    return this.svc.marcarEntrevista(etapaId, postulacionId, dto.realizada, dto.fechaHora, dto.comentario, u.id);
   }
 
   @Post('confirmar')
