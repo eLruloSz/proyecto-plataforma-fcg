@@ -25,9 +25,6 @@ import { AvanceModule } from './avance/avance.module';
         type: 'postgres',
         url: cfg.getOrThrow<string>('DATABASE_URL'),
         ssl: cfg.get('DATABASE_SSL') === 'true' ? { rejectUnauthorized: false } : false,
-        // El esquema vive en db/01_schema.sql (una sola fuente de verdad).
-        // TypeORM se usa para la conexión y las transacciones; las consultas
-        // son SQL parametrizado.
         synchronize: false,
         entities: [],
       }),
