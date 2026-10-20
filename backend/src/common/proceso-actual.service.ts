@@ -30,4 +30,18 @@ export class ProcesoActualService {
   async id(): Promise<string> {
     return (await this.obtener()).id;
   }
+
+  /**
+   * Proceso en curso: el ACTIVO o, si aún no se inicia, el que está en
+   * preparación (BORRADOR). Lo usan los liceos, que se revisan y editan
+   * antes de confirmar el proceso.
+   */
+  async enCurso(): Promise<Proceso> {
+    const [p] = await this.ds.query(
+      `SELECT id, nombre, anio, estado, sufijo_id, ultimo_correlativo
+         FROM procesos WHERE estado IN ('ACTIVO', 'BORRADOR') ORDER BY anio DESC LIMIT 1`,
+    );
+    if (!p) throw new NotFoundException('No hay un proceso en curso. Inicia el proceso del año primero.');
+    return p;
+  }
 }

@@ -11,15 +11,19 @@ INSERT INTO usuarios (email, password_hash, nombre_completo, firma) VALUES
   ('direccion@fcg.cl', '$2a$10$wvGsZNdVlFOX5OxYPh3DRet6Ojuu.Sv9Irn83Ur2MAneU/dyO2mre',
    'Dirección', E'Dirección\nFundación Carmen Goudie');
 
+-- Solo hay un proceso anterior (2025), ya cerrado. El sistema parte en la
+-- pantalla "Iniciar proceso 2026": al iniciarlo se copian estas etapas (con
+-- los cupos, requisitos y claves que les ponen las migraciones 03 a 05) y se
+-- revisan los liceos de abajo antes de confirmar.
 INSERT INTO procesos (id, nombre, anio, estado, sufijo_id) VALUES
-  ('c0000000-0000-0000-0000-000000002026', 'Beca Carmen Goudie 2026', 2026, 'ACTIVO', 'a');
+  ('c0000000-0000-0000-0000-000000002025', 'Beca Carmen Goudie 2025', 2025, 'CERRADO', 'a');
 
 INSERT INTO etapas (proceso_id, orden, nombre, descripcion, estado) VALUES
-  ('c0000000-0000-0000-0000-000000002026', 1, 'Invitación a establecimientos', 'Presentación a liceos, solicitud de nóminas y definición de invitados', 'ACTIVA'),
-  ('c0000000-0000-0000-0000-000000002026', 2, 'Presentación de la beca', 'Encuentro online con los invitados (3 fechas)', 'PENDIENTE'),
-  ('c0000000-0000-0000-0000-000000002026', 3, 'Preselección N°1', 'Cuestionario, documentos y ranking: 60 a entrevista', 'PENDIENTE'),
-  ('c0000000-0000-0000-0000-000000002026', 4, 'Preselección N°2', 'Entrevistas presenciales: 20 finalistas', 'PENDIENTE'),
-  ('c0000000-0000-0000-0000-000000002026', 5, 'Selección de becarios', 'Entrevistas con comité y decisión final', 'PENDIENTE');
+  ('c0000000-0000-0000-0000-000000002025', 1, 'Invitación a establecimientos', 'Presentación a liceos, solicitud de nóminas y definición de invitados', 'CERRADA'),
+  ('c0000000-0000-0000-0000-000000002025', 2, 'Presentación de la beca', 'Encuentro online con los invitados (3 fechas)', 'CERRADA'),
+  ('c0000000-0000-0000-0000-000000002025', 3, 'Preselección N°1', 'Cuestionario, documentos y ranking: 60 a entrevista', 'CERRADA'),
+  ('c0000000-0000-0000-0000-000000002025', 4, 'Preselección N°2', 'Entrevistas presenciales: 20 finalistas', 'CERRADA'),
+  ('c0000000-0000-0000-0000-000000002025', 5, 'Selección de becarios', 'Entrevistas con comité y decisión final', 'CERRADA');
 
 INSERT INTO liceos (codigo, nombre, comuna) VALUES
   ('01', 'Colegio Parroquial de Andacollo', 'Andacollo'),
@@ -63,13 +67,11 @@ SELECT id, 'CONTRAPARTE', 'Contraparte Liceo ' || codigo,
        CASE WHEN codigo IN ('03', '21') THEN NULL ELSE 'contraparte' || codigo || '@liceos-demo.cl' END
 FROM liceos;
 
-INSERT INTO participaciones_liceo (proceso_id, liceo_id)
-SELECT 'c0000000-0000-0000-0000-000000002026', id FROM liceos;
+INSERT INTO participaciones_liceo (proceso_id, liceo_id, estado)
+SELECT 'c0000000-0000-0000-0000-000000002025', id, 'PARTICIPA' FROM liceos;
 
-INSERT INTO eventos (proceso_id, tipo, fecha, enlace) VALUES
-  ('c0000000-0000-0000-0000-000000002026', 'ENCUENTRO_ONLINE', '2026-06-16 18:00-04', 'https://teams.microsoft.com/'),
-  ('c0000000-0000-0000-0000-000000002026', 'ENCUENTRO_ONLINE', '2026-06-17 18:30-04', 'https://teams.microsoft.com/'),
-  ('c0000000-0000-0000-0000-000000002026', 'ENCUENTRO_ONLINE', '2026-06-18 18:30-04', 'https://teams.microsoft.com/');
+-- Las fechas del encuentro online son de cada proceso; como el proceso 2026
+-- aún no existe, no se cargan aquí.
 
 INSERT INTO plantillas_correo (nombre, proposito, asunto, cuerpo) VALUES
   ('Presentación de la beca a liceos', 'PRESENTACION',

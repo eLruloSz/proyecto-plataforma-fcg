@@ -1,9 +1,9 @@
 import {
   Body, ConflictException, Controller, Get, Injectable, Module, NotFoundException,
-  Param, ParseUUIDPipe, Patch, Post, Put,
+  Param, ParseUUIDPipe, Patch, Post, Put, Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { AuditoriaService } from '../common/auditoria.service';
@@ -22,7 +22,7 @@ class ActualizarLiceoDto {
   @IsOptional() @IsString() @MaxLength(100) comuna?: string;
   @IsOptional() @IsString() @MaxLength(500) direccion?: string;
   @IsOptional() @IsString() @MaxLength(60) telefono?: string;
-  @IsOptional() activo?: boolean;
+  @IsOptional() @IsBoolean() activo?: boolean;
 }
 class ContactoDto {
   @IsString() @MaxLength(200) nombre: string;
@@ -45,12 +45,18 @@ export class LiceosService {
     private readonly auditoria: AuditoriaService,
   ) {}
 
-  async listar() {
-    const procesoId = await this.proceso.id();
+  /**
+   * Liceos del proceso en curso. Por defecto solo los activos que participan
+   * este año; con `todos` también los dejados fuera y los desactivados (lo usa
+   * la revisión de liceos al iniciar el proceso).
+   */
+  async listar(todos = false) {
+    const procesoId = (await this.proceso.enCurso()).id;
     return this.ds.query(
       `SELECT l.id, l.codigo, l.nombre, l.comuna, l.direccion, l.telefono, l.activo,
               COALESCE(pl.estado, 'PENDIENTE') AS participacion,
               pl.observaciones AS participacion_obs,
+              pl.incluido IS NOT FALSE AS incluido, pl.revisado_en,
               (SELECT row_to_json(c) FROM (SELECT id, nombre, cargo, email, telefono FROM contactos_liceo
                  WHERE liceo_id = l.id AND tipo = 'CONTRAPARTE') c) AS contraparte,
               (SELECT row_to_json(c) FROM (SELECT id, nombre, cargo, email, telefono FROM contactos_liceo
@@ -64,13 +70,14 @@ export class LiceosService {
               (SELECT COUNT(*)::int FROM postulaciones p WHERE p.liceo_id = l.id AND p.proceso_id = $1) AS invitados
          FROM liceos l
          LEFT JOIN participaciones_liceo pl ON pl.liceo_id = l.id AND pl.proceso_id = $1
+        ${todos ? '' : 'WHERE l.activo AND pl.incluido IS NOT FALSE'}
         ORDER BY l.codigo`,
       [procesoId],
     );
   }
 
   async obtener(id: string) {
-    const lista = await this.listar();
+    const lista = await this.listar(true);
     const l = lista.find((x: { id: string }) => x.id === id);
     if (!l) throw new NotFoundException('Liceo no encontrado.');
     return l;
@@ -83,9 +90,11 @@ export class LiceosService {
       `INSERT INTO liceos (codigo, nombre, comuna, direccion, telefono) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [dto.codigo, dto.nombre, dto.comuna ?? null, dto.direccion ?? null, dto.telefono ?? null],
     );
+    // Lo acaba de ingresar una persona: queda incluido y revisado.
     await this.ds.query(
-      `INSERT INTO participaciones_liceo (proceso_id, liceo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [await this.proceso.id(), l.id],
+      `INSERT INTO participaciones_liceo (proceso_id, liceo_id, revisado_en, revisado_por) VALUES ($1, $2, NOW(), $3)
+       ON CONFLICT DO NOTHING`,
+      [(await this.proceso.enCurso()).id, l.id, usuarioId],
     );
     await this.auditoria.registrar(usuarioId, 'CREAR_LICEO', 'liceos', l.id, dto);
     return this.obtener(l.id);
@@ -136,7 +145,7 @@ export class LiceosService {
 export class LiceosController {
   constructor(private readonly svc: LiceosService) {}
 
-  @Get() listar() { return this.svc.listar(); }
+  @Get() listar(@Query('todos') todos?: string) { return this.svc.listar(todos === '1' || todos === 'true'); }
 
   @Get(':id') obtener(@Param('id', ParseUUIDPipe) id: string) { return this.svc.obtener(id); }
 

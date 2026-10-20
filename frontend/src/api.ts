@@ -76,11 +76,24 @@ export interface Etapa {
   fecha_inicio: string | null; fecha_fin: string | null; cupo: number | null; estudiantes: number; requisitos: number;
 }
 export interface Proceso { id: string; nombre: string; anio: number; sufijo_id: string; ultimo_correlativo: number; etapas: Etapa[] }
+export interface BorradorProceso {
+  id: string; nombre: string; anio: number;
+  etapas: { orden: number; nombre: string; cupo: number | null; requisitos: number }[];
+}
+/** GET /proceso/inicio: si no hay proceso activo se muestra la pantalla "Iniciar proceso". */
+export interface InicioProceso {
+  activo: { id: string; nombre: string; anio: number } | null;
+  borrador: BorradorProceso | null;
+  ultimo: { nombre: string; anio: number } | null;
+  anioSugerido: number;
+}
 export interface Contacto { id: string; nombre: string; cargo: string | null; email: string | null; telefono: string | null }
 export type Participacion = 'PENDIENTE' | 'PARTICIPA' | 'NO_PARTICIPA';
 export interface Liceo {
   id: string; codigo: string; nombre: string; comuna: string | null; direccion: string | null; telefono: string | null; activo: boolean;
   participacion: Participacion; participacion_obs: string | null;
+  /** Participa en el proceso en curso (al iniciar el proceso se puede dejar fuera solo ese año). */
+  incluido: boolean; revisado_en: string | null;
   contraparte: Contacto | null; director: Contacto | null;
   nomina: { carga_id: string; nombre_archivo: string; cargado_en: string; alumnos: number; cursos: number } | null;
   invitados: number;

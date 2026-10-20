@@ -76,7 +76,7 @@ export class DashboardService {
               COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM cargas c WHERE c.liceo_id = l.id AND c.proceso_id = $1
                                              AND c.tipo = 'NOMINA_NOTAS'))::int AS con_nomina
          FROM liceos l LEFT JOIN participaciones_liceo pl ON pl.liceo_id = l.id AND pl.proceso_id = $1
-        WHERE l.activo`,
+        WHERE l.activo AND pl.incluido IS NOT FALSE`,
       [p.id],
     );
 
@@ -89,7 +89,7 @@ export class DashboardService {
          FROM liceos l
          LEFT JOIN participaciones_liceo pl ON pl.liceo_id = l.id AND pl.proceso_id = $1
          LEFT JOIN postulaciones po ON po.liceo_id = l.id AND po.proceso_id = $1
-        WHERE l.activo
+        WHERE l.activo AND pl.incluido IS NOT FALSE
         GROUP BY l.id, pl.estado
         ORDER BY l.codigo`,
       [p.id],

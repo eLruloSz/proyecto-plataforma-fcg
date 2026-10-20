@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { ProveedorSesion, useSesion } from './sesion';
-import { ProveedorAvisos, Cargando } from './ui';
+import { ProveedorAvisos, Cargando, ErrorCarga } from './ui';
 import { Layout } from './Layout';
 import { Login } from './paginas/Login';
 import { Dashboard } from './paginas/Dashboard';
@@ -16,6 +16,7 @@ import { Comunicacion } from './paginas/Comunicacion';
 import { DetalleEnvio } from './paginas/DetalleEnvio';
 import { Perfil } from './paginas/Perfil';
 import { Avance } from './paginas/Avance';
+import { PantallaInicio, useInicio } from './paginas/InicioProceso';
 
 const cliente = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -23,8 +24,13 @@ const cliente = new QueryClient({
 
 function Rutas() {
   const { usuario, cargando } = useSesion();
+  const inicio = useInicio(!!usuario);
   if (cargando) return <Cargando />;
   if (!usuario) return <Login />;
+  // Sin proceso activo solo se muestra la pantalla para iniciarlo.
+  if (inicio.isLoading) return <Cargando />;
+  if (inicio.error || !inicio.data) return <div className="p-6"><ErrorCarga error={inicio.error} /></div>;
+  if (!inicio.data.activo) return <PantallaInicio inicio={inicio.data} />;
   return (
     <Routes>
       <Route element={<Layout />}>
