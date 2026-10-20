@@ -19,8 +19,6 @@ services:
       POSTGRES_USER: becas
       POSTGRES_PASSWORD: becas_dev_password
     ports:
-      # Puerto 5433 en tu máquina para no chocar con un Postgres que ya tengas
-      # instalado (que suele usar el 5432). Se puede cambiar con DB_PORT.
       - "${DB_PORT:-5432}:5432"
     volumes:
       - becas_db:/var/lib/postgresql/data
