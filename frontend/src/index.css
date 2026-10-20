@@ -18,3 +18,10 @@
   .titulo { @apply text-lg font-semibold text-gray-900; }
   .subtitulo { @apply text-sm font-semibold text-gray-900; }
 }
+
+/* Barra de desplazamiento superior de las tablas anchas (DesplazamientoDoble):
+   se dibuja siempre, incluso donde el sistema oculta las barras hasta que se usan. */
+.barra-arriba::-webkit-scrollbar { height: 12px; }
+.barra-arriba::-webkit-scrollbar-track { background: #f9fafb; }
+.barra-arriba::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; border: 3px solid #f9fafb; }
+.barra-arriba::-webkit-scrollbar-thumb:hover { background: #9ca3af; }

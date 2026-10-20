@@ -86,8 +86,10 @@ export function Layout() {
   const { usuario, salir } = useSesion();
   const { data: proceso } = useProceso();
   return (
-    <div className="flex min-h-screen">
-      <aside className="flex w-56 flex-shrink-0 flex-col border-r border-gray-200 bg-gray-50">
+    // Alto fijo de pantalla: solo se desplaza el contenido; el menú y la barra
+    // de etapas quedan quietos (y lo "sticky" de las páginas funciona).
+    <div className="flex h-screen overflow-hidden">
+      <aside className="flex w-56 flex-shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-gray-50">
         <div className="border-b border-gray-200 px-4 py-4">
           <div className="text-sm font-bold tracking-tight text-gray-900">Beca Carmen Goudie</div>
           <div className="mt-0.5 text-xs text-gray-500">{proceso?.nombre ?? 'Sistema de gestión'}</div>
@@ -106,9 +108,9 @@ export function Layout() {
           <button onClick={salir} className="mt-2 text-gray-500 hover:text-gray-900">Cerrar sesión</button>
         </div>
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="border-b border-gray-200 bg-white px-6 py-3"><BarraEtapas /></div>
-        <div className="flex-1 overflow-y-auto p-6"><Outlet /></div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6"><Outlet /></div>
       </main>
     </div>
   );

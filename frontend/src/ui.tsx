@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { Participacion } from './api';
 
 // --- Avisos flotantes ---------------------------------------------------------
@@ -47,6 +47,51 @@ export function Modal({ titulo, onCerrar, children, ancho = 'max-w-2xl', pie }: 
         {pie && <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">{pie}</div>}
       </div>
     </div>
+  );
+}
+
+// --- Tabla ancha con barra de desplazamiento también arriba ------------------
+/**
+ * Contenedor con desplazamiento horizontal que agrega una segunda barra arriba
+ * de la tabla (fija al subir o bajar la página), sincronizada con la de abajo.
+ * Así no hay que bajar hasta el final de la tabla para moverse a la derecha.
+ */
+export function DesplazamientoDoble({ children, className = '' }: { children: ReactNode; className?: string }) {
+  const arriba = useRef<HTMLDivElement>(null);
+  const abajo = useRef<HTMLDivElement>(null);
+  const [medidas, setMedidas] = useState({ contenido: 0, visible: 0 });
+
+  useEffect(() => {
+    const el = abajo.current;
+    if (!el) return;
+    const medir = () => setMedidas({ contenido: el.scrollWidth, visible: el.clientWidth });
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, []);
+
+  // Mueve una barra cuando se mueve la otra (la comparación evita el rebote).
+  const seguir = (desde: HTMLDivElement | null, hacia: HTMLDivElement | null) => {
+    if (desde && hacia && Math.abs(hacia.scrollLeft - desde.scrollLeft) > 1) hacia.scrollLeft = desde.scrollLeft;
+  };
+  const hayDesplazamiento = medidas.contenido > medidas.visible + 1;
+
+  return (
+    <>
+      {hayDesplazamiento && (
+        <div ref={arriba} onScroll={() => seguir(arriba.current, abajo.current)}
+          className="barra-arriba sticky -top-6 z-10 overflow-x-auto overflow-y-hidden rounded-t-lg border border-b-0 border-gray-200 bg-white"
+          aria-hidden="true">
+          <div style={{ width: medidas.contenido, height: 1 }} />
+        </div>
+      )}
+      <div ref={abajo} onScroll={() => seguir(abajo.current, arriba.current)}
+        className={`overflow-x-auto ${hayDesplazamiento ? 'rounded-t-none' : ''} ${className}`}>
+        {children}
+      </div>
+    </>
   );
 }
 
