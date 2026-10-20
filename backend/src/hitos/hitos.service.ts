@@ -71,7 +71,7 @@ export class HitosService {
          LEFT JOIN contactos_liceo c ON c.liceo_id = l.id AND c.tipo = 'CONTRAPARTE'
          LEFT JOIN participaciones_liceo pl ON pl.liceo_id = l.id AND pl.proceso_id = $1
          LEFT JOIN hitos_liceo h ON h.liceo_id = l.id AND h.proceso_id = $1
-        WHERE l.activo
+        WHERE l.activo AND pl.incluido IS NOT FALSE
         GROUP BY l.id, c.nombre, c.cargo, pl.estado
         ORDER BY l.codigo`,
       [procesoId],

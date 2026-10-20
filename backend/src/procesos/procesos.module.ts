@@ -1,18 +1,27 @@
 import {
   Body, ConflictException, Controller, Delete, Get, HttpCode, Injectable, Module, NotFoundException, Param,
-  ParseUUIDPipe, Patch, Post,
+  ParseUUIDPipe, Patch, Post, Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { AuditoriaService } from '../common/auditoria.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
+import { InicioProcesoService } from './inicio-proceso.service';
 
 class ActualizarProcesoDto {
   @IsOptional() @IsString() @MaxLength(200) nombre?: string;
   @IsOptional() @Matches(/^[a-z]{1,2}$/, { message: 'El sufijo debe ser una o dos letras minúsculas.' })
   sufijoId?: string;
+}
+
+class AnioDto {
+  @IsInt({ message: 'El año debe ser un número.' }) @Min(2000) @Max(2100) anio: number;
+}
+class MarcarLiceoDto {
+  @IsOptional() @IsBoolean() incluido?: boolean;
+  @IsOptional() @IsBoolean() revisado?: boolean;
 }
 
 class NuevaEtapaDto {
@@ -148,7 +157,42 @@ export class ProcesosService {
 @ApiBearerAuth()
 @Controller('proceso')
 export class ProcesosController {
-  constructor(private readonly svc: ProcesosService) {}
+  constructor(private readonly svc: ProcesosService, private readonly inicio: InicioProcesoService) {}
+
+  // --- Inicio y cierre del proceso anual --------------------------------------
+  @Get('inicio')
+  estadoInicio() {
+    return this.inicio.estado();
+  }
+
+  @Post('borrador')
+  crearBorrador(@Body() dto: AnioDto, @Usuario() u: UsuarioSesion) {
+    return this.inicio.crearBorrador(dto.anio, u.id);
+  }
+
+  @Patch('borrador')
+  cambiarAnio(@Body() dto: AnioDto, @Usuario() u: UsuarioSesion) {
+    return this.inicio.cambiarAnio(dto.anio, u.id);
+  }
+
+  @Put('borrador/liceos/:liceoId')
+  marcarLiceo(@Param('liceoId', ParseUUIDPipe) liceoId: string, @Body() dto: MarcarLiceoDto, @Usuario() u: UsuarioSesion) {
+    return this.inicio.marcarLiceo(liceoId, dto, u.id);
+  }
+
+  @Post('borrador/confirmar')
+  @HttpCode(200)
+  confirmar(@Usuario() u: UsuarioSesion) {
+    return this.inicio.confirmar(u.id);
+  }
+
+  @Post('cerrar')
+  @HttpCode(200)
+  cerrar(@Body() dto: AnioDto, @Usuario() u: UsuarioSesion) {
+    return this.inicio.cerrar(dto.anio, u.id);
+  }
+
+  // --- Proceso activo y sus etapas -------------------------------------------
 
   @Get()
   actual() {
@@ -182,5 +226,5 @@ export class ProcesosController {
   }
 }
 
-@Module({ controllers: [ProcesosController], providers: [ProcesosService] })
+@Module({ controllers: [ProcesosController], providers: [ProcesosService, InicioProcesoService] })
 export class ProcesosModule {}

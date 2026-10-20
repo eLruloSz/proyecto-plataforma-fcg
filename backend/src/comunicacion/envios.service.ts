@@ -142,7 +142,7 @@ export class EnviosService {
          FROM liceos l
          LEFT JOIN contactos_liceo c ON c.liceo_id = l.id AND c.tipo = $2
          LEFT JOIN participaciones_liceo pl ON pl.liceo_id = l.id AND pl.proceso_id = $1
-        WHERE l.activo ${liceoIds ? 'AND l.id = ANY($3::uuid[])' : ''}
+        WHERE l.activo AND pl.incluido IS NOT FALSE ${liceoIds ? 'AND l.id = ANY($3::uuid[])' : ''}
         ORDER BY l.codigo`,
       liceoIds ? [procesoId, tipo, liceoIds] : [procesoId, tipo],
     );

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, Etapa, Proceso } from '../api';
+import { api, Etapa, InicioProceso, Proceso } from '../api';
 import { useProceso } from '../Layout';
-import { Modal, useAviso } from '../ui';
+import { Caja, Modal, useAviso } from '../ui';
 
 /** Renombrar etapas, fijar su cupo, agregar una entre dos existentes o quitar una vacía. */
 export function ConfigurarEtapas({ onCerrar }: { onCerrar: () => void }) {
@@ -12,6 +12,8 @@ export function ConfigurarEtapas({ onCerrar }: { onCerrar: () => void }) {
   const [cambios, setCambios] = useState<Record<string, { nombre: string; cupo: string }>>({});
   const [nueva, setNueva] = useState({ nombre: '', despuesDe: '', cupo: '' });
   const [borrando, setBorrando] = useState<Etapa | null>(null);
+  const [cerrando, setCerrando] = useState(false);
+  const [anioConfirmado, setAnioConfirmado] = useState('');
 
   const aplicar = (p: Proceso) => { qc.setQueryData(['proceso'], p); ['avance', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); };
   const guardar = useMutation({
@@ -29,6 +31,16 @@ export function ConfigurarEtapas({ onCerrar }: { onCerrar: () => void }) {
     mutationFn: (id: string) => api.del<Proceso>(`/proceso/etapas/${id}`),
     onSuccess: (p) => { aplicar(p); setBorrando(null); avisar('Etapa eliminada'); },
     onError: (e: Error) => { avisar(e.message, 'error'); setBorrando(null); },
+  });
+  const cerrar = useMutation({
+    mutationFn: () => api.post<InicioProceso>('/proceso/cerrar', { anio: Number(anioConfirmado) }),
+    onSuccess: (i) => {
+      // Sin proceso activo, la app vuelve a la pantalla "Iniciar proceso".
+      qc.removeQueries({ predicate: (x) => x.queryKey[0] !== 'inicio' });
+      qc.setQueryData(['inicio'], i);
+      avisar(`Proceso ${proceso?.anio} cerrado`);
+    },
+    onError: (e: Error) => avisar(e.message, 'error'),
   });
   if (!proceso) return null;
 
@@ -72,6 +84,32 @@ export function ConfigurarEtapas({ onCerrar }: { onCerrar: () => void }) {
           <button className="btn-primario" disabled={!nueva.nombre.trim() || !nueva.despuesDe || crear.isPending} onClick={() => crear.mutate()}>Agregar</button>
         </div>
       </div>
+
+      <div className="mt-6 border-t border-gray-200 pt-4">
+        <div className="text-xs font-semibold text-gray-600">Fin del proceso</div>
+        <p className="mt-1 text-sm text-gray-500">
+          Cuando termine la selección, cierra el proceso {proceso.anio}. Sus datos quedan guardados y el sistema vuelve a la
+          pantalla para iniciar el proceso del año siguiente.
+        </p>
+        <button className="btn-peligro mt-2" onClick={() => { setAnioConfirmado(''); setCerrando(true); }}>Cerrar proceso {proceso.anio}</button>
+      </div>
+
+      {cerrando && (
+        <Modal titulo={`Cerrar el proceso ${proceso.anio}`} onCerrar={() => setCerrando(false)} ancho="max-w-md"
+          pie={<>
+            <button className="btn-secundario" onClick={() => setCerrando(false)}>Cancelar</button>
+            <button className="btn-peligro" disabled={anioConfirmado !== String(proceso.anio) || cerrar.isPending} onClick={() => cerrar.mutate()}>
+              Cerrar proceso
+            </button>
+          </>}>
+          <Caja tono="rojo">
+            El proceso deja de estar en curso: ya no se podrá trabajar en él desde el sistema y aparecerá la pantalla para
+            iniciar el proceso {proceso.anio + 1}.
+          </Caja>
+          <label className="label mt-4" htmlFor="anio-cierre">Para confirmar, escribe el año del proceso ({proceso.anio})</label>
+          <input id="anio-cierre" className="input" inputMode="numeric" value={anioConfirmado} onChange={(e) => setAnioConfirmado(e.target.value)} />
+        </Modal>
+      )}
 
       {borrando && (
         <Modal titulo="Eliminar etapa" onCerrar={() => setBorrando(null)} ancho="max-w-md"

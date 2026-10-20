@@ -42,7 +42,24 @@ token = (await api('POST', '/auth/login', { email: 'coordinacion@fcg.cl', passwo
 await fetch(`${API}/liceos`).then((r) => assert.equal(r.status, 401, 'sin token debe dar 401'));
 console.log('  ok: credenciales malas → 401, sin token → 401');
 
-// 2. Proceso
+// 2. Inicio del proceso (la base demo parte sin proceso activo)
+paso('Iniciar proceso');
+let inicio = await api('GET', '/proceso/inicio');
+if (!inicio.activo) {
+  await api('GET', '/proceso', undefined, { esperado: [404] });
+  if (!inicio.borrador) inicio = await api('POST', '/proceso/borrador', { anio: inicio.anioSugerido });
+  console.log(`  borrador ${inicio.borrador.anio}: ${inicio.borrador.etapas.length} etapas copiadas`);
+  const todos = await api('GET', '/liceos?todos=1');
+  assert.ok(todos.every((l) => l.incluido && !l.revisado_en), 'todos parten incluidos y sin revisar');
+  // Se revisa uno, se deja otro fuera este año y se confirma.
+  await api('PUT', `/proceso/borrador/liceos/${todos[0].id}`, { revisado: true });
+  await api('PUT', `/proceso/borrador/liceos/${todos[1].id}`, { incluido: false });
+  await api('PUT', `/proceso/borrador/liceos/${todos[1].id}`, { incluido: true });
+  inicio = await api('POST', '/proceso/borrador/confirmar');
+  assert.ok(inicio.activo && !inicio.borrador);
+  console.log(`  ok: ${inicio.activo.nombre} iniciado`);
+}
+
 paso('Proceso y etapas');
 const proceso = await api('GET', '/proceso');
 console.log(`  ${proceso.nombre}: ${proceso.etapas.map((e) => `${e.orden}.${e.estado}`).join(' ')}`);
@@ -172,15 +189,16 @@ paso('Datos de contacto, RUT y confirmación (formulario 1)');
 let invitados = await api('GET', '/invitados');
 await api('PATCH', `/invitados/${invitados[0].id}`, { rut: '12.345.678-9' }, { esperado: [400] });
 await api('PATCH', `/invitados/${invitados[0].id}`, { email: 'no-es-email' }, { esperado: [400] });
-const encuentros = await api('GET', '/encuentros');
 for (const [i, inv] of invitados.entries()) {
   const datos = { email: `estudiante${i + 1}@correo-demo.cl`, telefono: `+5691234${String(i).padStart(4, '0')}` };
-  if (i % 4 !== 3) Object.assign(datos, { confirmacion: 'CONFIRMADO', encuentroEventoId: encuentros[i % 3].id });
+  if (i % 4 !== 3) datos.confirmacion = 'CONFIRMADO';
   if (i === 3) datos.confirmacion = 'RECHAZADO';
   if (i === 7) delete datos.email; // uno queda sin email
   await api('PATCH', `/invitados/${inv.id}`, datos);
 }
-await api('PATCH', `/invitados/${invitados[0].id}`, { rut: '11.111.111-1', asistioEncuentro: true });
+await api('PATCH', `/invitados/${invitados[0].id}`, { rut: '11.111.111-1' });
+// El encuentro online es de la etapa 2: en la etapa 1 todavía no se puede registrar.
+await api('PATCH', `/invitados/${invitados[0].id}`, { asistioEncuentro: true }, { esperado: [400] });
 await api('POST', `/invitados/${invitados[0].id}/comentarios`, { texto: 'RSH no actualizado, el padre cambió de trabajo' });
 invitados = await api('GET', '/invitados');
 console.log(`  ${invitados.filter((i) => i.confirmacion === 'CONFIRMADO').length} confirmados, ${invitados.filter((i) => i.confirmacion === 'RECHAZADO').length} rechazó; RUT guardado como ${invitados[0].rut}`);
@@ -228,6 +246,8 @@ paso('Activar etapa 2 (la 1 queda cerrada)');
 const p2 = await api('POST', `/proceso/etapas/${proceso.etapas[1].id}/activar`);
 console.log(`  ${p2.etapas.map((e) => `${e.orden}.${e.estado}`).join(' ')}`);
 assert.deepEqual(p2.etapas.map((e) => e.estado), ['CERRADA', 'ACTIVA', 'PENDIENTE', 'PENDIENTE', 'PENDIENTE']);
+await api('PATCH', `/invitados/${invitados[0].id}`, { asistioEncuentro: true });
+console.log('  ok: con la etapa 2 activa ya se registra la asistencia al encuentro');
 await api('POST', `/proceso/etapas/${proceso.etapas[0].id}/activar`);
 
 console.log('\n✔ Flujo de la etapa 1 completo');
