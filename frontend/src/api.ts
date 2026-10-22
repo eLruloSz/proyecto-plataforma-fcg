@@ -111,16 +111,25 @@ export interface Previsualizacion {
 export interface AlumnoNomina {
   id: string; curso: string; n_lista: number | null; apellido_paterno: string; apellido_materno: string | null; nombres: string;
   promedio_1m: number | null; promedio_2m: number | null; promedio: number; posicion_curso: number;
+  /** Lugar entre todos los alumnos de la nómina del liceo (empates comparten lugar). */
+  posicion_liceo: number;
   postulacion_id: string | null; codigo: string | null; sugerido: boolean;
 }
+/** liceo: los N mejores del liceo sin importar el curso · curso: los N mejores de cada curso. */
+export type ModoSugerencia = 'liceo' | 'curso';
 export interface Nomina {
   liceo: { id: string; nombre: string; codigo: string };
   carga: { id: string; nombre_archivo: string; cargado_en: string; advertencias: Observacion[] } | null;
+  modo: ModoSugerencia; n: number;
+  /** Todos los alumnos del liceo en una sola lista, del mejor al peor promedio. */
+  alumnos: AlumnoNomina[];
   cursos: { curso: string; especialidad: string | null; alumnos: AlumnoNomina[] }[];
 }
 export type Confirmacion = 'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
 export interface Invitado {
   id: string; codigo: string; curso: string; promedio: number; posicion_curso: number; estado: string;
+  /** Lugar entre todos los alumnos de la nómina de su liceo, y cuántos son (null si ya no hay nómina). */
+  posicion_liceo: number | null; alumnos_liceo: number | null;
   confirmacion: Confirmacion; confirmacion_en: string | null; encuentro_evento_id: string | null; asistio_encuentro: boolean | null;
   nombres: string; apellido_paterno: string; apellido_materno: string | null; email: string | null; telefono: string | null; rut: string | null;
   liceo_id: string; liceo_codigo: string; liceo: string; comentarios: number;

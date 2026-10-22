@@ -101,8 +101,16 @@ export class InvitadosService {
       cond.push(`(lower(pe.nombres || ' ' || pe.apellido_paterno || ' ' || COALESCE(pe.apellido_materno,'')) LIKE $${params.length}
                   OR lower(p.codigo) LIKE $${params.length})`);
     }
+    // Posición de cada alumno entre todos los de la nómina de su liceo
+    // (empates comparten lugar), y cuántos alumnos tiene esa nómina.
     return this.ds.query(
-      `SELECT p.id, p.codigo, p.curso, p.promedio::float, p.posicion_curso, p.estado, p.confirmacion, p.confirmacion_en,
+      `WITH ranking AS (
+         SELECT id, RANK() OVER (PARTITION BY carga_id ORDER BY promedio DESC NULLS LAST)::int AS posicion_liceo,
+                COUNT(*) OVER (PARTITION BY carga_id)::int AS alumnos_liceo
+           FROM alumnos_nomina WHERE proceso_id = $1
+       )
+       SELECT p.id, p.codigo, p.curso, p.promedio::float, p.posicion_curso, rk.posicion_liceo, rk.alumnos_liceo,
+              p.estado, p.confirmacion, p.confirmacion_en,
               p.encuentro_evento_id, p.asistio_encuentro,
               pe.nombres, pe.apellido_paterno, pe.apellido_materno, pe.email, pe.telefono, pe.rut,
               l.id AS liceo_id, l.codigo AS liceo_codigo, l.nombre AS liceo,
@@ -118,6 +126,7 @@ export class InvitadosService {
          JOIN liceos l ON l.id = p.liceo_id
          LEFT JOIN etapas et ON et.id = p.etapa_id
          LEFT JOIN resultados_etapa r ON r.postulacion_id = p.id AND r.etapa_id = p.etapa_id
+         LEFT JOIN ranking rk ON rk.id = p.alumno_nomina_id
         WHERE ${cond.join(' AND ')}
         ORDER BY p.correlativo`,
       params,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, Contacto, Invitado, Liceo, Nomina, Participacion, Previsualizacion } from '../api';
+import { api, Contacto, Invitado, Liceo, ModoSugerencia, Nomina, Participacion, Previsualizacion } from '../api';
 import { Caja, Cargando, Etiqueta, ErrorCarga, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 
 // ---------------------------------------------------------------------------
@@ -125,6 +125,8 @@ function SubirNomina({ liceo, hayNomina }: { liceo: Liceo; hayNomina: boolean })
               </table>
             )}
 
+            {previa.alumnos.length > 0 && <ListaPrevia alumnos={previa.alumnos} />}
+
             {previa.errores.length > 0 && (
               <Caja tono="rojo" titulo="Estas filas NO se cargarán (corrígelas en el Excel y vuelve a subirlo si son importantes)">
                 <ul className="list-disc space-y-0.5 pl-5">
@@ -147,29 +149,62 @@ function SubirNomina({ liceo, hayNomina }: { liceo: Liceo; hayNomina: boolean })
   );
 }
 
+/** Vista previa: todos los alumnos del archivo en una sola lista, del mejor al peor promedio. */
+function ListaPrevia({ alumnos }: { alumnos: Previsualizacion['alumnos'] }) {
+  const ordenados = [...alumnos].sort((x, y) => y.promedio - x.promedio);
+  // Lugar en el liceo: los empates comparten lugar (1, 2, 2, 4), igual que en el curso.
+  const lugar = ordenados.map((a) => ordenados.findIndex((b) => b.promedio === a.promedio) + 1);
+  return (
+    <div>
+      <div className="mb-1.5 text-xs font-semibold text-gray-600">Alumnos del liceo, del mejor al peor promedio</div>
+      <div className="tarjeta max-h-72 overflow-auto">
+        <table className="tabla">
+          <thead><tr><th className="w-14">Lugar</th><th>Alumno</th><th>Curso</th><th className="w-16">En curso</th><th className="text-right">1°</th><th className="text-right">2°</th><th className="text-right">Prom.</th></tr></thead>
+          <tbody>
+            {ordenados.map((a, i) => (
+              <tr key={`${a.curso}-${i}`}>
+                <td className="tabular-nums text-gray-500">{lugar[i]}°</td>
+                <td>{a.apellidoPaterno} {a.apellidoMaterno}, {a.nombres}</td>
+                <td className="whitespace-nowrap text-gray-600">{a.curso}</td>
+                <td className="tabular-nums text-gray-500">{a.posicionCurso}°</td>
+                <td className="text-right tabular-nums text-gray-500">{nota(a.promedio1m)}</td>
+                <td className="text-right tabular-nums text-gray-500">{nota(a.promedio2m)}</td>
+                <td className="text-right font-semibold tabular-nums">{nota(a.promedio)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Nómina por curso y selección de invitados
+// Nómina del liceo (una sola lista) y selección de invitados
 // ---------------------------------------------------------------------------
 function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
   const qc = useQueryClient();
   const avisar = useAviso();
-  const [porCurso, setPorCurso] = useState(3);
+  const [modo, setModo] = useState<ModoSugerencia>('liceo');
+  const [n, setN] = useState(10);
+  const [curso, setCurso] = useState('');
   const { data, isLoading, error } = useQuery({
-    queryKey: ['nomina', liceo.id, porCurso],
-    queryFn: () => api.get<Nomina>(`/liceos/${liceo.id}/nomina?porCurso=${porCurso}`),
+    queryKey: ['nomina', liceo.id, modo, n],
+    queryFn: () => api.get<Nomina>(`/liceos/${liceo.id}/nomina?modo=${modo}&n=${n}`),
     placeholderData: (prev) => prev,
   });
   const [elegidos, setElegidos] = useState<Set<string>>(new Set());
   const [confirmando, setConfirmando] = useState(false);
   const [eliminando, setEliminando] = useState(false);
 
-  // Al cargar (o cambiar el N), se marcan los sugeridos que aún no están invitados.
+  // Al cargar (o cambiar la sugerencia), se marcan los sugeridos que aún no están invitados.
   useEffect(() => {
     if (!data) return;
-    setElegidos(new Set(data.cursos.flatMap((c) => c.alumnos.filter((a) => a.sugerido && !a.codigo).map((a) => a.id))));
+    setElegidos(new Set(data.alumnos.filter((a) => a.sugerido && !a.codigo).map((a) => a.id)));
   }, [data]);
 
-  const alumnosElegidos = useMemo(() => data?.cursos.flatMap((c) => c.alumnos).filter((a) => elegidos.has(a.id)) ?? [], [data, elegidos]);
+  const alumnosElegidos = useMemo(() => data?.alumnos.filter((a) => elegidos.has(a.id)) ?? [], [data, elegidos]);
+  const lista = useMemo(() => (data?.alumnos ?? []).filter((a) => !curso || a.curso === curso), [data, curso]);
 
   const invitar = useMutation({
     mutationFn: () => api.post<{ invitados: { codigo: string }[] }>('/invitados', { alumnoIds: [...elegidos] }),
@@ -196,9 +231,10 @@ function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
     );
   }
 
-  const alternar = (id: string) => setElegidos((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const total = data.cursos.reduce((s, c) => s + c.alumnos.length, 0);
-  const invitados = data.cursos.reduce((s, c) => s + c.alumnos.filter((a) => a.codigo).length, 0);
+  const alternar = (id: string) => setElegidos((s) => { const x = new Set(s); x.has(id) ? x.delete(id) : x.add(id); return x; });
+  const cambiarModo = (m: ModoSugerencia) => { setModo(m); setN(m === 'curso' ? 3 : 10); };
+  const total = data.alumnos.length;
+  const invitados = data.alumnos.filter((a) => a.codigo).length;
 
   return (
     <div className="space-y-4">
@@ -213,51 +249,67 @@ function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
         </div>
       </div>
 
-      <div className="tarjeta flex flex-wrap items-center gap-3 bg-gray-50 px-4 py-3 text-sm">
-        <label htmlFor="porCurso">Sugerir los</label>
-        <input id="porCurso" type="number" min={0} max={20} className="input w-16 py-1" value={porCurso}
-          onChange={(e) => setPorCurso(Math.max(0, Math.min(20, Number(e.target.value) || 0)))} />
-        <span>primeros lugares de cada curso (los empates entran todos).</span>
+      <div className="tarjeta flex flex-wrap items-center gap-x-2 gap-y-3 bg-gray-50 px-4 py-3 text-sm">
+        <label htmlFor="sugerirN">Sugerir los</label>
+        <input id="sugerirN" type="number" min={0} max={200} className="input w-16 py-1" value={n}
+          onChange={(e) => setN(Math.max(0, Math.min(200, Number(e.target.value) || 0)))} />
+        <span>primeros</span>
+        <select className="input w-auto py-1" value={modo} onChange={(e) => cambiarModo(e.target.value as ModoSugerencia)} aria-label="Cómo sugerir">
+          <option value="liceo">del liceo (sin importar el curso)</option>
+          <option value="curso">de cada curso</option>
+        </select>
+        <span className="text-gray-500">(los empates entran todos)</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-gray-500">{elegidos.size} seleccionados</span>
           <button className="btn-primario" disabled={!elegidos.size} onClick={() => setConfirmando(true)}>Invitar seleccionados</button>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {data.cursos.map((c) => (
-          <div key={c.curso} className="tarjeta overflow-hidden">
-            <div className="flex items-baseline justify-between border-b border-gray-200 px-4 py-2">
-              <h3 className="font-semibold text-gray-900">{c.curso}</h3>
-              <span className="text-xs text-gray-500">{c.especialidad ?? ''} · {c.alumnos.length} alumnos</span>
-            </div>
-            <div className="max-h-96 overflow-y-auto">
-              <table className="tabla">
-                <thead><tr><th className="w-8" /><th className="w-10">#</th><th>Alumno</th><th className="text-right">1°</th><th className="text-right">2°</th><th className="text-right">Prom.</th></tr></thead>
-                <tbody>
-                  {c.alumnos.map((a) => (
-                    <tr key={a.id} className={a.codigo ? 'bg-green-50/60' : elegidos.has(a.id) ? 'bg-yellow-50/60' : ''}>
-                      <td>
-                        {a.codigo ? <span title="Ya invitado">✓</span> : (
-                          <input type="checkbox" checked={elegidos.has(a.id)} onChange={() => alternar(a.id)}
-                            aria-label={`Seleccionar a ${a.nombres} ${a.apellido_paterno}`} />
-                        )}
-                      </td>
-                      <td className="tabular-nums text-gray-500">{a.posicion_curso}°</td>
-                      <td>
-                        {a.apellido_paterno} {a.apellido_materno}, {a.nombres}
-                        {a.codigo && <span className="ml-2"><Etiqueta tono="verde">{a.codigo}</Etiqueta></span>}
-                      </td>
-                      <td className="text-right tabular-nums text-gray-500">{nota(a.promedio_1m)}</td>
-                      <td className="text-right tabular-nums text-gray-500">{nota(a.promedio_2m)}</td>
-                      <td className="text-right font-semibold tabular-nums">{nota(a.promedio)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-sm" role="group" aria-label="Filtrar por curso">
+        <span className="mr-1 text-gray-500">Curso:</span>
+        {[{ curso: '', alumnos: data.alumnos }, ...data.cursos].map((c) => (
+          <button key={c.curso || 'todos'} onClick={() => setCurso(c.curso)} aria-pressed={curso === c.curso}
+            className={`rounded-full border px-2.5 py-0.5 text-xs ${curso === c.curso ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}>
+            {c.curso || 'Todos'} <span className="opacity-60">{c.alumnos.length}</span>
+          </button>
         ))}
+      </div>
+
+      <div className="tarjeta max-h-[640px] overflow-auto">
+        <table className="tabla">
+          <thead>
+            <tr>
+              <th className="w-8" />
+              <th className="w-20" title="Lugar entre todos los alumnos del liceo">Lugar liceo</th>
+              <th>Alumno</th>
+              <th>Curso</th>
+              <th className="w-20" title="Lugar dentro de su curso">Lugar curso</th>
+              <th className="text-right">1°</th><th className="text-right">2°</th><th className="text-right">Prom.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((a) => (
+              <tr key={a.id} className={a.codigo ? 'bg-green-50/60' : elegidos.has(a.id) ? 'bg-yellow-50/60' : ''}>
+                <td>
+                  {a.codigo ? <span title="Ya invitado">✓</span> : (
+                    <input type="checkbox" checked={elegidos.has(a.id)} onChange={() => alternar(a.id)}
+                      aria-label={`Seleccionar a ${a.nombres} ${a.apellido_paterno}`} />
+                  )}
+                </td>
+                <td className="font-semibold tabular-nums text-gray-900">{a.posicion_liceo}°</td>
+                <td>
+                  {a.apellido_paterno} {a.apellido_materno}, {a.nombres}
+                  {a.codigo && <span className="ml-2"><Etiqueta tono="verde">{a.codigo}</Etiqueta></span>}
+                </td>
+                <td className="whitespace-nowrap text-gray-600">{a.curso}</td>
+                <td className="tabular-nums text-gray-500">{a.posicion_curso}°</td>
+                <td className="text-right tabular-nums text-gray-500">{nota(a.promedio_1m)}</td>
+                <td className="text-right tabular-nums text-gray-500">{nota(a.promedio_2m)}</td>
+                <td className="text-right font-semibold tabular-nums">{nota(a.promedio)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {confirmando && (
@@ -266,7 +318,7 @@ function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
             <button className="btn-primario" disabled={invitar.isPending} onClick={() => invitar.mutate()}>Confirmar invitación</button></>}>
           <p className="mb-3 text-sm text-gray-600">Cada estudiante recibirá su Id (ej. <code>{liceo.codigo}.0XXa</code>) y aparecerá en la lista de Invitados. Un Id entregado no se reutiliza.</p>
           <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
-            {alumnosElegidos.map((a) => <li key={a.id}><span className="text-gray-400">{a.curso} · {a.posicion_curso}°</span> {a.nombres} {a.apellido_paterno} <span className="text-gray-400">({nota(a.promedio)})</span></li>)}
+            {alumnosElegidos.map((a) => <li key={a.id}><span className="text-gray-400">{a.posicion_liceo}° del liceo · {a.curso} ({a.posicion_curso}°)</span> {a.nombres} {a.apellido_paterno} <span className="text-gray-400">({nota(a.promedio)})</span></li>)}
           </ul>
         </Modal>
       )}
