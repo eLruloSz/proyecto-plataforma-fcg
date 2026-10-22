@@ -169,11 +169,15 @@ export class NominasService {
   }
 
   /**
-   * Nómina de un liceo agrupada por curso, con la sugerencia de invitados:
-   * los que están en las primeras `porCurso` posiciones de su curso
-   * (si hay empate en el límite, entran todos los empatados).
+   * Nómina de un liceo con la posición de cada alumno en su curso y en el
+   * liceo (empates comparten lugar: 1, 2, 2, 4) y la sugerencia de invitados:
+   *   modo 'liceo' → los `n` mejores del liceo, sin importar el curso
+   *   modo 'curso' → los `n` mejores de cada curso
+   * Si hay empate en el límite, entran todos los empatados.
+   * `alumnos` es la lista única ordenada por promedio; `cursos` agrupa la misma
+   * información por curso.
    */
-  async obtener(liceoId: string, porCurso: number) {
+  async obtener(liceoId: string, n: number, modo: 'liceo' | 'curso' = 'liceo') {
     const liceo = await this.liceo(liceoId);
     const procesoId = await this.proceso.id();
     const [carga] = await this.ds.query(
@@ -181,24 +185,29 @@ export class NominasService {
         WHERE liceo_id = $1 AND proceso_id = $2 AND tipo = 'NOMINA_NOTAS'`,
       [liceoId, procesoId],
     );
-    if (!carga) return { liceo, carga: null, cursos: [] };
+    if (!carga) return { liceo, carga: null, modo, n, alumnos: [], cursos: [] };
 
-    const alumnos = await this.ds.query(
+    const filas = await this.ds.query(
       `SELECT a.id, a.curso, a.especialidad, a.n_lista, a.apellido_paterno, a.apellido_materno, a.nombres,
               a.promedio_1m::float, a.promedio_2m::float, a.promedio::float, a.posicion_curso,
+              RANK() OVER (ORDER BY a.promedio DESC NULLS LAST)::int AS posicion_liceo,
               p.id AS postulacion_id, p.codigo
          FROM alumnos_nomina a
          LEFT JOIN postulaciones p ON p.alumno_nomina_id = a.id
         WHERE a.carga_id = $1
-        ORDER BY a.curso, a.posicion_curso, a.apellido_paterno`,
+        ORDER BY posicion_liceo, a.curso, a.apellido_paterno, a.nombres`,
       [carga.id],
     );
-    const cursos = new Map<string, { curso: string; especialidad: string | null; alumnos: unknown[] }>();
-    for (const a of alumnos) {
+    const alumnos = filas.map((a: any) => ({
+      ...a,
+      sugerido: (modo === 'curso' ? a.posicion_curso : a.posicion_liceo) <= n,
+    }));
+    const cursos = new Map<string, { curso: string; especialidad: string | null; alumnos: any[] }>();
+    for (const a of [...alumnos].sort((x, y) => x.curso.localeCompare(y.curso) || x.posicion_curso - y.posicion_curso)) {
       if (!cursos.has(a.curso)) cursos.set(a.curso, { curso: a.curso, especialidad: a.especialidad, alumnos: [] });
-      cursos.get(a.curso)!.alumnos.push({ ...a, sugerido: a.posicion_curso <= porCurso });
+      cursos.get(a.curso)!.alumnos.push(a);
     }
-    return { liceo, carga, cursos: [...cursos.values()] };
+    return { liceo, carga, modo, n, alumnos, cursos: [...cursos.values()] };
   }
 
   async eliminar(liceoId: string, usuarioId: string) {

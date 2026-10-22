@@ -1,5 +1,5 @@
 import {
-  Controller, Delete, DefaultValuePipe, Get, HttpCode, Module, Param, ParseIntPipe, ParseUUIDPipe,
+  Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe,
   Post, Query, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -37,12 +37,26 @@ export class NominasController {
     return this.svc.confirmar(liceoId, archivo, u.id);
   }
 
+  /**
+   * Nómina con la sugerencia de invitados:
+   *   ?modo=liceo&n=10 → los 10 mejores promedios del liceo (por defecto)
+   *   ?modo=curso&n=3  → los 3 mejores de cada curso
+   * `?porCurso=3` se sigue aceptando y equivale a modo=curso&n=3.
+   */
   @Get()
   obtener(
     @Param('liceoId', ParseUUIDPipe) liceoId: string,
-    @Query('porCurso', new DefaultValuePipe(3), ParseIntPipe) porCurso: number,
+    @Query('n') n?: string,
+    @Query('modo') modo?: string,
+    @Query('porCurso') porCurso?: string,
   ) {
-    return this.svc.obtener(liceoId, Math.max(0, Math.min(porCurso, 50)));
+    const entero = (s: string | undefined, def: number) => {
+      const v = Number.parseInt(s ?? '', 10);
+      return Number.isFinite(v) ? Math.max(0, Math.min(v, 200)) : def;
+    };
+    if (porCurso !== undefined && n === undefined) return this.svc.obtener(liceoId, entero(porCurso, 3), 'curso');
+    const m = modo === 'curso' ? 'curso' : 'liceo';
+    return this.svc.obtener(liceoId, entero(n, m === 'curso' ? 3 : 10), m);
   }
 
   @Delete()

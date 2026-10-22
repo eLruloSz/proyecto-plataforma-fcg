@@ -77,6 +77,7 @@ export function Invitados() {
   const avisar = useAviso();
   const [filtro, setFiltro] = useState<'todos' | Confirmacion | 'sin-email'>('todos');
   const [q, setQ] = useState('');
+  const [liceoId, setLiceoId] = useState('');
   const [comentando, setComentando] = useState<Invitado | null>(null);
   const [quitando, setQuitando] = useState<Invitado | null>(null);
   const quitar = useMutation({
@@ -85,12 +86,30 @@ export function Invitados() {
     onError: (e: Error) => avisar(e.message, 'error'),
   });
 
-  const lista = useMemo(() => (data ?? []).filter((i) => {
-    if (q && !`${i.codigo} ${i.nombres} ${i.apellido_paterno} ${i.apellido_materno} ${i.liceo}`.toLowerCase().includes(q.toLowerCase())) return false;
-    if (filtro === 'sin-email') return !i.email;
-    if (filtro !== 'todos') return i.confirmacion === filtro;
-    return true;
-  }), [data, filtro, q]);
+  // Liceos que tienen invitados, para el filtro.
+  const liceos = useMemo(() => {
+    const m = new Map<string, { id: string; codigo: string; nombre: string; n: number }>();
+    for (const i of data ?? []) {
+      const l = m.get(i.liceo_id) ?? { id: i.liceo_id, codigo: i.liceo_codigo, nombre: i.liceo, n: 0 };
+      l.n++;
+      m.set(i.liceo_id, l);
+    }
+    return [...m.values()].sort((a, b) => a.codigo.localeCompare(b.codigo));
+  }, [data]);
+
+  const lista = useMemo(() => {
+    const filtrados = (data ?? []).filter((i) => {
+      if (liceoId && i.liceo_id !== liceoId) return false;
+      if (q && !`${i.codigo} ${i.nombres} ${i.apellido_paterno} ${i.apellido_materno} ${i.liceo}`.toLowerCase().includes(q.toLowerCase())) return false;
+      if (filtro === 'sin-email') return !i.email;
+      if (filtro !== 'todos') return i.confirmacion === filtro;
+      return true;
+    });
+    // Con un liceo elegido se ordena del mejor al peor lugar en ese liceo; si no, por Id.
+    return liceoId
+      ? [...filtrados].sort((a, b) => (a.posicion_liceo ?? Infinity) - (b.posicion_liceo ?? Infinity))
+      : filtrados;
+  }, [data, filtro, q, liceoId]);
 
   if (isLoading) return <Cargando />;
   if (error) return <ErrorCarga error={error} />;
@@ -114,6 +133,10 @@ export function Invitados() {
         </div>
         <div className="flex gap-2">
           <input className="input w-56" placeholder="Buscar por nombre o Id…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
+          <select className="input w-auto max-w-[260px]" value={liceoId} onChange={(e) => setLiceoId(e.target.value)} aria-label="Filtrar por liceo">
+            <option value="">Todos los liceos</option>
+            {liceos.map((l) => <option key={l.id} value={l.id}>{l.codigo}. {l.nombre} ({l.n})</option>)}
+          </select>
           <select className="input w-auto" value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} aria-label="Filtrar">
             <option value="todos">Todos</option>
             <option value="PENDIENTE">Sin respuesta</option>
@@ -139,12 +162,13 @@ export function Invitados() {
           <thead>
             <tr>
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th>Curso</th><th className="text-right">Prom.</th>
+              <th className="whitespace-nowrap" title="Lugar entre todos los alumnos de la nómina de su liceo, y lugar dentro de su curso">Lugar</th>
               <th className="min-w-[180px]">Email</th><th className="min-w-[120px]">Teléfono</th>
               <th>Aceptó postular</th>{conEncuentro && <><th>Encuentro online</th><th>Asistió</th></>}<th>Etapa</th><th />
             </tr>
           </thead>
           <tbody>
-            {lista.length === 0 && <tr><td colSpan={conEncuentro ? 12 : 10}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
+            {lista.length === 0 && <tr><td colSpan={conEncuentro ? 13 : 11}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
             {lista.map((i) => (
               <tr key={i.id} className={i.confirmacion === 'RECHAZADO' ? 'text-gray-400' : ''}>
                 <td className="font-mono text-xs">{i.codigo}</td>
@@ -152,6 +176,12 @@ export function Invitados() {
                 <td className="max-w-[160px] truncate text-gray-600" title={i.liceo}>{i.liceo}</td>
                 <td>{i.curso}</td>
                 <td className="text-right tabular-nums">{nota(i.promedio)}</td>
+                <td className="whitespace-nowrap">
+                  {i.posicion_liceo
+                    ? <><div className="tabular-nums"><strong className={i.confirmacion === 'RECHAZADO' ? '' : 'text-gray-900'}>{i.posicion_liceo}°</strong> de {i.alumnos_liceo} del liceo</div>
+                        <div className="text-xs text-gray-400">{i.posicion_curso}° de su curso</div></>
+                    : <span className="text-xs text-gray-400" title="El liceo ya no tiene nómina cargada">—</span>}
+                </td>
                 <td><CeldaEditable valor={i.email} tipo="email" placeholder="agregar email" onGuardar={(v) => set(i.id, { email: v || null })} /></td>
                 <td><CeldaEditable valor={i.telefono} placeholder="agregar teléfono" onGuardar={(v) => set(i.id, { telefono: v || null })} /></td>
                 <td>

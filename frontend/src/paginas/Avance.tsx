@@ -135,7 +135,7 @@ export function Avance() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="titulo">Avance por etapa</h1>
-          <p className="text-sm text-gray-500">Marca quién pasa y quién no. Nada cambia hasta que confirmas.</p>
+          <p className="text-sm text-gray-500">Marca quién avanza y quién no. Nada cambia hasta que confirmas.</p>
         </div>
         <button className="btn-secundario" onClick={() => setConfigEtapas(true)}>Configurar etapas</button>
       </div>
@@ -162,7 +162,7 @@ export function Avance() {
         </div>
       </div>
 
-      {e.cupo !== null && totalPasan > e.cupo && <Caja tono="rojo">Hay {totalPasan} estudiantes que pasan y el cupo de esta etapa es {e.cupo}.</Caja>}
+      {e.cupo !== null && totalPasan > e.cupo && <Caja tono="rojo">Hay {totalPasan} estudiantes que avanzan y el cupo de esta etapa es {e.cupo}.</Caja>}
 
       {/* Acciones */}
       <div className="tarjeta flex flex-wrap items-center gap-2 bg-gray-50 px-4 py-3">
@@ -175,8 +175,8 @@ export function Avance() {
           <button className="btn-secundario" onClick={() => avisarA('FALTAN_REQUISITOS', false)}>Recordar requisitos pendientes ({r.con_requisitos_pendientes})</button>
         )}
         <div className="ml-auto flex flex-wrap gap-2">
-          {r.sin_avisar_pasa > 0 && <button className="btn-secundario" onClick={() => avisarA('PASA')}>Avisar a los que pasan ({r.sin_avisar_pasa})</button>}
-          {r.sin_avisar_no_pasa > 0 && <button className="btn-secundario" onClick={() => avisarA('NO_PASA')}>Avisar a los que no pasan ({r.sin_avisar_no_pasa})</button>}
+          {r.sin_avisar_pasa > 0 && <button className="btn-secundario" onClick={() => avisarA('PASA')}>Avisar a los que avanzan ({r.sin_avisar_pasa})</button>}
+          {r.sin_avisar_no_pasa > 0 && <button className="btn-secundario" onClick={() => avisarA('NO_PASA')}>Avisar a los que no avanzan ({r.sin_avisar_no_pasa})</button>}
           <button className="btn-primario" disabled={!marcadas} onClick={() => setConfirmando(true)}>Confirmar avance ({marcadas})</button>
         </div>
       </div>
@@ -241,10 +241,10 @@ export function Avance() {
                       <div className="inline-flex">
                         <button onClick={() => marcar.mutate({ f, resultado: f.resultado === 'PASA' ? null : 'PASA' })}
                           className={`btn btn-chico rounded-r-none border ${f.resultado === 'PASA' ? 'border-green-600 bg-green-600 text-white' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                          aria-pressed={f.resultado === 'PASA'}>Pasa</button>
+                          aria-pressed={f.resultado === 'PASA'}>Avanza</button>
                         <button onClick={() => marcar.mutate({ f, resultado: f.resultado === 'NO_PASA' ? null : 'NO_PASA' })}
                           className={`btn btn-chico -ml-px rounded-l-none border ${f.resultado === 'NO_PASA' ? 'border-red-600 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                          aria-pressed={f.resultado === 'NO_PASA'}>No pasa</button>
+                          aria-pressed={f.resultado === 'NO_PASA'}>No Avanza</button>
                       </div>
                     )}
                   </td>
@@ -265,12 +265,12 @@ export function Avance() {
           </>}>
           <div className="space-y-4 text-sm">
             <p className="text-gray-600">
-              Se aplicarán las marcas: <strong className="text-green-700">{marcadosPasa.length} pasan</strong>
+              Se aplicarán las marcas: <strong className="text-green-700">{marcadosPasa.length} avanzan</strong>
               {e.siguiente ? <> a <strong>{e.siguiente.nombre}</strong></> : ' y quedan seleccionados como becarios'} y{' '}
               <strong className="text-red-700">{marcadosNo.length} no pasan</strong> (quedan fuera del proceso).
               {r.pendientes_de_decidir > 0 && <> Los {r.pendientes_de_decidir} sin decidir se quedan en esta etapa.</>}
             </p>
-            {e.cupo !== null && totalPasan > e.cupo && <Caja tono="rojo">Con esta confirmación pasan {totalPasan} y el cupo es {e.cupo}.</Caja>}
+            {e.cupo !== null && totalPasan > e.cupo && <Caja tono="rojo">Con esta confirmación avanzan {totalPasan} y el cupo es {e.cupo}.</Caja>}
             <div className="grid gap-4 sm:grid-cols-2">
               {[['Pasan', marcadosPasa, 'text-green-700'], ['No pasan', marcadosNo, 'text-red-700']].map(([t, l, c]) => (
                 <div key={t as string}>
