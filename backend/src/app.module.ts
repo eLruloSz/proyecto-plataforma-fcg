@@ -14,6 +14,7 @@ import { InvitadosModule } from './invitados/invitados.module';
 import { ComunicacionModule } from './comunicacion/comunicacion.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AvanceModule } from './avance/avance.module';
+import { GeneracionesModule } from './generaciones/generaciones.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AvanceModule } from './avance/avance.module';
     ComunicacionModule,
     DashboardModule,
     AvanceModule,
+    GeneracionesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

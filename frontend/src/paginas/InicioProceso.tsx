@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Route, Routes, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, BorradorProceso, Contacto, InicioProceso, Liceo } from '../api';
 import { useSesion } from '../sesion';
 import { Caja, Cargando, ErrorCarga, Etiqueta, Modal, useAviso, Vacio } from '../ui';
+import { DetalleGeneracion, ListaGeneraciones } from './Generaciones';
 
 /** Estado del proceso anual: si hay uno activo, uno en preparación o ninguno. */
 export function useInicio(habilitado = true) {
@@ -14,7 +15,8 @@ const CLAVE_LISTA = ['liceos', 'todos'];
 
 /**
  * Pantalla que se muestra mientras no hay un proceso activo: primero el botón
- * "Iniciar proceso", luego la revisión de liceos y la confirmación.
+ * "Iniciar proceso" junto con las generaciones de años anteriores, luego la
+ * revisión de liceos y la confirmación.
  */
 export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
   const { usuario, salir } = useSesion();
@@ -33,64 +35,75 @@ export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">
-        {inicio.borrador ? <RevisionLiceos borrador={inicio.borrador} /> : <Bienvenida inicio={inicio} />}
+        {inicio.borrador ? <RevisionLiceos borrador={inicio.borrador} /> : (
+          <Routes>
+            <Route path="generaciones/:anio" element={<DetalleGeneracion volver="/" />} />
+            <Route path="*" element={<Bienvenida inicio={inicio} />} />
+          </Routes>
+        )}
       </main>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Paso 0: no hay proceso en curso
+// Paso 0: no hay proceso en curso → iniciar uno y ver las generaciones
 // ---------------------------------------------------------------------------
 function Bienvenida({ inicio }: { inicio: InicioProceso }) {
   const qc = useQueryClient();
   const avisar = useAviso();
   const [anio, setAnio] = useState(String(inicio.anioSugerido));
   const [otroAnio, setOtroAnio] = useState(false);
+  const [usarBase, setUsarBase] = useState(true);
   const valido = /^\d{4}$/.test(anio);
   const iniciar = useMutation({
-    mutationFn: () => api.post<InicioProceso>('/proceso/borrador', { anio: Number(anio) }),
+    mutationFn: () => api.post<InicioProceso>('/proceso/borrador', { anio: Number(anio), usarBase: !!inicio.ultimo && usarBase }),
     onSuccess: (i) => { qc.setQueryData(['inicio'], i); qc.removeQueries({ queryKey: ['liceos'] }); },
     onError: (e: Error) => avisar(e.message, 'error'),
   });
 
   return (
-    <div className="tarjeta mx-auto mt-6 max-w-xl px-8 py-10 text-center">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fundación Carmen Goudie</p>
-      <h1 className="mt-2 text-2xl font-bold text-gray-900">Proceso de selección {valido ? anio : ''}</h1>
-      <p className="mx-auto mt-3 max-w-md text-sm text-gray-600">
-        No hay un proceso en curso. Al iniciarlo vas a revisar los liceos con los que trabaja la fundación y sus contactos,
-        y elegir cuáles participan este año.
-      </p>
+    <div className="space-y-10">
+      <section className="tarjeta flex flex-wrap items-center justify-between gap-6 rounded-xl border-marca-200 p-7">
+        <div className="min-w-0 flex-[999_1_480px] space-y-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-marca-700">Proceso {valido ? anio : ''}</p>
+          <h1 className="text-2xl font-bold text-gray-900">Aún no se ha iniciado el proceso {valido ? anio : ''}</h1>
+          {inicio.ultimo ? (
+            <label className="flex max-w-xl cursor-pointer items-start gap-2.5 pt-1 text-sm text-gray-800">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 flex-shrink-0 accent-marca-700" checked={usarBase} onChange={(e) => setUsarBase(e.target.checked)} />
+              <span>
+                Usar la generación {inicio.ultimo.anio} como base: sus etapas (con cupos y requisitos) y los mismos liceos participantes.
+                <span className="block text-xs text-gray-500">Las plantillas de correo y los contactos de los liceos se mantienen siempre.</span>
+              </span>
+            </label>
+          ) : (
+            <p className="text-xs text-gray-500">Es el primer proceso en el sistema: parte con las etapas del documento de la fundación.</p>
+          )}
+        </div>
+        <div className="flex flex-[1_1_220px] flex-col items-stretch gap-2 sm:max-w-[260px]">
+          <button className="btn-primario px-6 py-3 text-base" disabled={!valido || iniciar.isPending} onClick={() => iniciar.mutate()}>
+            {iniciar.isPending ? 'Preparando…' : `Iniciar proceso ${valido ? anio : ''}`}
+          </button>
+          <div className="text-center text-xs text-gray-500">
+            {otroAnio ? (
+              <label className="inline-flex items-center gap-2">
+                Año del proceso
+                <input type="number" className="input w-24 py-1" value={anio} onChange={(e) => setAnio(e.target.value)} aria-label="Año del proceso" />
+              </label>
+            ) : (
+              <button className="py-1 underline hover:text-gray-800" onClick={() => setOtroAnio(true)}>¿Es otro año?</button>
+            )}
+          </div>
+        </div>
+      </section>
 
-      <ol className="mx-auto mt-6 grid max-w-lg gap-2 text-left text-sm sm:grid-cols-3">
-        {['Revisar liceos y contactos', 'Confirmar los que participan', 'Comienza la etapa 1'].map((t, i) => (
-          <li key={t} className="flex items-start gap-2 rounded-md bg-gray-50 px-3 py-2">
-            <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-gray-900 text-xs font-semibold text-white">{i + 1}</span>
-            <span className="text-gray-700">{t}</span>
-          </li>
-        ))}
-      </ol>
-
-      <button className="btn-primario mt-8 px-6 py-2.5 text-base" disabled={!valido || iniciar.isPending} onClick={() => iniciar.mutate()}>
-        {iniciar.isPending ? 'Preparando…' : `Iniciar proceso ${valido ? anio : ''}`}
-      </button>
-      <div className="mt-3 text-xs text-gray-500">
-        {otroAnio ? (
-          <label className="inline-flex items-center gap-2">
-            Año del proceso
-            <input type="number" className="input w-24 py-1" value={anio} onChange={(e) => setAnio(e.target.value)} aria-label="Año del proceso" />
-          </label>
-        ) : (
-          <button className="underline hover:text-gray-800" onClick={() => setOtroAnio(true)}>¿Es otro año?</button>
-        )}
-      </div>
-
-      {inicio.ultimo && (
-        <p className="mt-8 border-t border-gray-100 pt-4 text-xs text-gray-400">
-          Último proceso: {inicio.ultimo.nombre} (cerrado). Sus etapas, cupos y requisitos se copian al nuevo.
-        </p>
-      )}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Generaciones</h2>
+          <p className="mt-1 text-sm text-gray-500">Procesos de años anteriores. Se pueden consultar, pero no modificar.</p>
+        </div>
+        <ListaGeneraciones />
+      </section>
     </div>
   );
 }
@@ -108,6 +121,7 @@ function RevisionLiceos({ borrador }: { borrador: BorradorProceso }) {
   const [revisando, setRevisando] = useState<Liceo | 'nuevo' | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [verInactivos, setVerInactivos] = useState(false);
+  const [volviendo, setVolviendo] = useState(false);
 
   const marcar = useMutation({
     mutationFn: (v: { id: string; incluido?: boolean; revisado?: boolean }) =>
@@ -136,6 +150,18 @@ function RevisionLiceos({ borrador }: { borrador: BorradorProceso }) {
     onError: (e: Error) => { avisar(e.message, 'error'); setConfirmando(false); },
   });
 
+  const descartar = useMutation({
+    mutationFn: () => api.del<InicioProceso>('/proceso/borrador'),
+    onSuccess: (i) => {
+      qc.setQueryData(['inicio'], i);
+      qc.removeQueries({ queryKey: ['liceos'] });
+      qc.invalidateQueries({ queryKey: ['generaciones'] });
+      navigate('/');
+      avisar('Volviste al inicio. El proceso no se inició.', 'info');
+    },
+    onError: (e: Error) => { avisar(e.message, 'error'); setVolviendo(false); },
+  });
+
   const activos = useMemo(() => (data ?? []).filter((l) => l.activo), [data]);
   const lista = useMemo(() => activos.filter((l) => {
     if (q && !`${l.codigo} ${l.nombre} ${l.comuna ?? ''} ${l.contraparte?.email ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false;
@@ -156,6 +182,9 @@ function RevisionLiceos({ borrador }: { borrador: BorradorProceso }) {
 
   return (
     <div className="space-y-5 pb-4">
+      <button className="py-1 text-sm font-semibold text-marca-700 hover:underline" onClick={() => setVolviendo(true)}>
+        ← Volver al inicio
+      </button>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Iniciar proceso · Paso 1 de 2</p>
@@ -248,6 +277,21 @@ function RevisionLiceos({ borrador }: { borrador: BorradorProceso }) {
           Confirmar liceos e iniciar el proceso
         </button>
       </div>
+
+      {volviendo && (
+        <Modal titulo="Volver al inicio" onCerrar={() => setVolviendo(false)} ancho="max-w-md"
+          pie={<>
+            <button className="btn-secundario" onClick={() => setVolviendo(false)}>Seguir revisando</button>
+            <button className="btn-primario" disabled={descartar.isPending} onClick={() => descartar.mutate()}>
+              {descartar.isPending ? 'Volviendo…' : 'Volver al inicio'}
+            </button>
+          </>}>
+          <div className="space-y-3 text-sm text-gray-700">
+            <p>El proceso {borrador.anio} todavía no se inicia. Si vuelves, se descartan las marcas de este año (qué liceos participan y cuáles ya revisaste).</p>
+            <p>Los cambios que hiciste en los datos de los liceos y sus contactos <strong>se mantienen</strong>.</p>
+          </div>
+        </Modal>
+      )}
 
       {revisando && (
         <FormLiceo liceo={revisando === 'nuevo' ? null : revisando} codigoSugerido={codigoSugerido} onCerrar={() => setRevisando(null)} />

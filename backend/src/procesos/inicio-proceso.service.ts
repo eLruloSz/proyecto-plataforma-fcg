@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { AuditoriaService } from '../common/auditoria.service';
+import { ResumenGeneracionService } from '../generaciones/resumen.service';
 
 /**
  * Etapas con que parte un proceso cuando no hay un año anterior del cual
@@ -25,18 +26,29 @@ const nombreProceso = (anio: number) => `Beca Carmen Goudie ${anio}`;
  *   sin proceso → [Iniciar proceso] → BORRADOR (se revisan los liceos)
  *               → [Confirmar]       → ACTIVO   (el sistema funciona normal)
  *               → [Cerrar proceso]  → CERRADO  (vuelve a aparecer "Iniciar proceso")
+ *
+ * Al cerrar se guarda el resumen del año para el histórico de generaciones.
+ * Un proceso cerrado no se reabre. Las generaciones históricas ingresadas a
+ * mano (historico = TRUE) no cuentan como "proceso anterior" para copiar.
  */
 @Injectable()
 export class InicioProcesoService {
-  constructor(private readonly ds: DataSource, private readonly auditoria: AuditoriaService) {}
+  constructor(
+    private readonly ds: DataSource,
+    private readonly auditoria: AuditoriaService,
+    private readonly resumenes: ResumenGeneracionService,
+  ) {}
 
   /** Lo que necesita la pantalla de inicio para decidir qué mostrar. */
   async estado() {
     const [activo] = await this.ds.query(`SELECT id, nombre, anio FROM procesos WHERE estado = 'ACTIVO' LIMIT 1`);
     const [borrador] = await this.ds.query(`SELECT id, nombre, anio FROM procesos WHERE estado = 'BORRADOR' LIMIT 1`);
     const [ultimo] = await this.ds.query(
-      `SELECT id, nombre, anio, estado FROM procesos WHERE estado = 'CERRADO' ORDER BY anio DESC LIMIT 1`);
-    const anioSugerido = ultimo ? ultimo.anio + 1 : new Date().getFullYear();
+      `SELECT id, nombre, anio, estado FROM procesos WHERE estado = 'CERRADO' AND NOT historico ORDER BY anio DESC LIMIT 1`);
+    // El año siguiente al último proceso (o el actual), saltándose los años que
+    // ya tienen una generación (también las ingresadas a mano).
+    const [{ max }] = await this.ds.query(`SELECT MAX(anio) AS max FROM procesos`);
+    const anioSugerido = Math.max(ultimo ? ultimo.anio + 1 : new Date().getFullYear(), (max ?? 0) + 1);
 
     let detalleBorrador = null;
     if (borrador) {
@@ -55,30 +67,44 @@ export class InicioProcesoService {
   }
 
   /**
-   * Crea el proceso del año como BORRADOR: copia las etapas (con cupos y
-   * requisitos) del último proceso y deja a todos los liceos activos como
-   * participantes, sin revisar.
+   * Crea el proceso del año como BORRADOR, con los liceos sin revisar.
+   *
+   * usarBase = TRUE (por defecto): copia del último proceso las etapas (con
+   * cupos y requisitos) y deja marcados los mismos liceos que participaron ese
+   * año (más los liceos agregados después). Las plantillas de correo y los
+   * contactos de los liceos no dependen del año: siempre se mantienen.
+   *
+   * usarBase = FALSE: etapas por defecto y todos los liceos activos marcados.
    */
-  async crearBorrador(anio: number, usuarioId: string) {
+  async crearBorrador(anio: number, usuarioId: string, usarBase = true) {
     const id = await this.ds.transaction(async (em) => {
       const [enCurso] = await em.query(`SELECT nombre, estado FROM procesos WHERE estado IN ('ACTIVO', 'BORRADOR')`);
       if (enCurso?.estado === 'ACTIVO') throw new ConflictException(`Primero hay que cerrar el proceso en curso (${enCurso.nombre}).`);
       if (enCurso) throw new ConflictException('Ya hay un proceso en preparación.');
       await this.verificarAnioLibre(em, anio);
 
-      const [anterior] = await em.query(`SELECT id, sufijo_id FROM procesos ORDER BY anio DESC LIMIT 1`);
+      const [anterior] = await em.query(
+        `SELECT id, anio, sufijo_id FROM procesos WHERE NOT historico ORDER BY anio DESC LIMIT 1`);
+      const base = usarBase ? anterior : undefined;
       const [p] = await em.query(
         `INSERT INTO procesos (nombre, anio, estado, sufijo_id) VALUES ($1, $2, 'BORRADOR', $3) RETURNING id`,
         [nombreProceso(anio), anio, anterior?.sufijo_id ?? 'a']);
 
-      const copiadas = anterior ? await this.copiarEtapas(em, anterior.id, p.id) : 0;
+      const copiadas = base ? await this.copiarEtapas(em, base.id, p.id) : 0;
       if (!copiadas) await this.etapasPorDefecto(em, p.id);
 
+      // Con base: participa si participó en el proceso base, o si el liceo no
+      // estaba en ese proceso (se agregó después).
       await em.query(
-        `INSERT INTO participaciones_liceo (proceso_id, liceo_id) SELECT $1, id FROM liceos WHERE activo`, [p.id]);
+        `INSERT INTO participaciones_liceo (proceso_id, liceo_id, incluido)
+         SELECT $1, l.id, COALESCE(ant.incluido, TRUE)
+           FROM liceos l
+           LEFT JOIN participaciones_liceo ant ON ant.liceo_id = l.id AND ant.proceso_id = $2
+          WHERE l.activo`,
+        [p.id, base?.id ?? null]);
       return p.id as string;
     });
-    await this.auditoria.registrar(usuarioId, 'CREAR_PROCESO', 'procesos', id, { anio });
+    await this.auditoria.registrar(usuarioId, 'CREAR_PROCESO', 'procesos', id, { anio, usarBase });
     return this.estado();
   }
 
@@ -90,6 +116,19 @@ export class InicioProcesoService {
       await em.query(`UPDATE procesos SET anio = $2, nombre = $3 WHERE id = $1`, [b.id, anio, nombreProceso(anio)]);
     });
     await this.auditoria.registrar(usuarioId, 'CAMBIAR_ANIO_PROCESO', 'procesos', b.id, { anio });
+    return this.estado();
+  }
+
+  /**
+   * Descarta el proceso en preparación y vuelve a la pantalla "Iniciar
+   * proceso". Se borran solo las marcas de ese año (participa / revisado) y
+   * sus etapas copiadas; los cambios a liceos y contactos se mantienen,
+   * porque esos datos no dependen del año.
+   */
+  async descartarBorrador(usuarioId: string) {
+    const b = await this.borrador();
+    await this.ds.query(`DELETE FROM procesos WHERE id = $1 AND estado = 'BORRADOR'`, [b.id]);
+    await this.auditoria.registrar(usuarioId, 'DESCARTAR_PROCESO', 'procesos', b.id, { anio: b.anio });
     return this.estado();
   }
 
@@ -130,7 +169,8 @@ export class InicioProcesoService {
 
   /**
    * Cierra el proceso activo. Se pide el año como confirmación para no
-   * cerrarlo por error. Sus datos quedan guardados como historial.
+   * cerrarlo por error. Sus datos quedan guardados y se guarda el resumen
+   * para el histórico de generaciones. No se puede reabrir.
    */
   async cerrar(anio: number, usuarioId: string) {
     const [p] = await this.ds.query(`SELECT id, anio FROM procesos WHERE estado = 'ACTIVO' LIMIT 1`);
@@ -140,7 +180,8 @@ export class InicioProcesoService {
       await em.query(
         `UPDATE etapas SET estado = 'CERRADA', fecha_fin = COALESCE(fecha_fin, CURRENT_DATE)
           WHERE proceso_id = $1 AND estado = 'ACTIVA'`, [p.id]);
-      await em.query(`UPDATE procesos SET estado = 'CERRADO' WHERE id = $1`, [p.id]);
+      await em.query(`UPDATE procesos SET estado = 'CERRADO', cerrado_en = NOW() WHERE id = $1`, [p.id]);
+      await this.resumenes.guardar(p.id, em);
     });
     await this.auditoria.registrar(usuarioId, 'CERRAR_PROCESO', 'procesos', p.id);
     return this.estado();
@@ -157,7 +198,7 @@ export class InicioProcesoService {
   private async verificarAnioLibre(em: EntityManager, anio: number, exceptoId?: string) {
     const [otro] = await em.query(
       `SELECT 1 FROM procesos WHERE anio = $1 AND ($2::uuid IS NULL OR id <> $2)`, [anio, exceptoId ?? null]);
-    if (otro) throw new ConflictException(`Ya existe un proceso del año ${anio}.`);
+    if (otro) throw new ConflictException(`Ya existe un proceso o una generación del año ${anio}.`);
   }
 
   /** Copia etapas (nombre, descripción, clave, cupo) y sus requisitos activos. Devuelve cuántas copió. */
