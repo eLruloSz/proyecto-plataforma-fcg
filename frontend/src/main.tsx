@@ -17,6 +17,7 @@ import { DetalleEnvio } from './paginas/DetalleEnvio';
 import { Perfil } from './paginas/Perfil';
 import { Avance } from './paginas/Avance';
 import { PantallaInicio, useInicio } from './paginas/InicioProceso';
+import { DetalleGeneracion, PaginaGeneraciones } from './paginas/Generaciones';
 
 const cliente = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
@@ -43,6 +44,8 @@ function Rutas() {
         <Route path="comunicacion/envios/:id" element={<DetalleEnvio />} />
         <Route path="avance" element={<Avance />} />
         <Route path="avance/:etapaId" element={<Avance />} />
+        <Route path="generaciones" element={<PaginaGeneraciones />} />
+        <Route path="generaciones/:anio" element={<DetalleGeneracion />} />
         <Route path="perfil" element={<Perfil />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Route>

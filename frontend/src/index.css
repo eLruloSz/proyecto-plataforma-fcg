@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 @layer components {
-  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
-  .btn-primario { @apply btn bg-gray-900 text-white hover:bg-gray-700; }
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marca-600 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primario { @apply btn bg-marca-700 text-white hover:bg-marca-800; }
   .btn-secundario { @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50; }
   .btn-peligro { @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50; }
   .btn-chico { @apply px-2 py-1 text-xs; }

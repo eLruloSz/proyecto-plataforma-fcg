@@ -230,6 +230,41 @@ export interface VistaAvance {
   };
 }
 
+// --- Histórico de generaciones ---------------------------------------------
+/** Foto de un año. En las generaciones ingresadas a mano, null = sin dato. */
+export interface EtapaResumen {
+  orden: number; nombre: string; cupo: number | null; llegaron: number | null; fecha_inicio: string | null; fecha_fin: string | null;
+}
+export interface ResumenGeneracion {
+  liceos: { convocados: number | null; con_invitados: number | null };
+  invitados: number | null;
+  aceptaron: number | null;
+  becarios: number | null;
+  etapas: EtapaResumen[];
+  /** Solo en el detalle. llegaron[i] corresponde a etapas[i]. */
+  por_liceo?: { codigo: string; nombre: string; invitados: number; aceptaron: number; llegaron: number[]; becarios: number }[];
+  lista_becarios?: { codigo: string | null; nombre: string; liceo: string | null }[];
+  material?: {
+    nominas: number;
+    ranking: { nombre_archivo: string; cargado_en: string } | null;
+    entrevistas: number;
+    envios: { asunto: string; proposito: string; grupo: Grupo; total: number; enviado_en: string }[];
+    correos: number;
+  } | null;
+}
+export interface Generacion {
+  anio: number; nombre: string; estado: 'ACTIVO' | 'CERRADO'; historico: boolean;
+  inicio: string | null; cerrado_en: string | null; observaciones: string | null;
+  resumen: ResumenGeneracion | null;
+}
+/** Lo que se envía para crear o corregir una generación ingresada a mano. */
+export interface GeneracionHistoricaDatos {
+  anio: number; liceos: number | null; invitados: number | null; aceptaron: number | null; becarios: number | null;
+  etapas: { nombre: string; llegaron: number | null }[];
+  listaBecarios: { nombre: string; liceo: string | null }[];
+  observaciones: string | null;
+}
+
 // Textos para mostrar
 export const PROPOSITOS: Record<string, string> = {
   PRESENTACION: 'Presentación a liceos',

@@ -9,6 +9,7 @@ import { ProcesoActualService } from '../common/proceso-actual.service';
 import { AuditoriaService } from '../common/auditoria.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 import { InicioProcesoService } from './inicio-proceso.service';
+import { GeneracionesModule } from '../generaciones/generaciones.module';
 
 class ActualizarProcesoDto {
   @IsOptional() @IsString() @MaxLength(200) nombre?: string;
@@ -18,6 +19,10 @@ class ActualizarProcesoDto {
 
 class AnioDto {
   @IsInt({ message: 'El año debe ser un número.' }) @Min(2000) @Max(2100) anio: number;
+}
+class IniciarProcesoDto extends AnioDto {
+  /** Copiar del último proceso las etapas y los liceos que participaron (por defecto, sí). */
+  @IsOptional() @IsBoolean() usarBase?: boolean;
 }
 class MarcarLiceoDto {
   @IsOptional() @IsBoolean() incluido?: boolean;
@@ -166,13 +171,19 @@ export class ProcesosController {
   }
 
   @Post('borrador')
-  crearBorrador(@Body() dto: AnioDto, @Usuario() u: UsuarioSesion) {
-    return this.inicio.crearBorrador(dto.anio, u.id);
+  crearBorrador(@Body() dto: IniciarProcesoDto, @Usuario() u: UsuarioSesion) {
+    return this.inicio.crearBorrador(dto.anio, u.id, dto.usarBase ?? true);
   }
 
   @Patch('borrador')
   cambiarAnio(@Body() dto: AnioDto, @Usuario() u: UsuarioSesion) {
     return this.inicio.cambiarAnio(dto.anio, u.id);
+  }
+
+  /** Volver atrás: descarta el proceso en preparación. */
+  @Delete('borrador')
+  descartarBorrador(@Usuario() u: UsuarioSesion) {
+    return this.inicio.descartarBorrador(u.id);
   }
 
   @Put('borrador/liceos/:liceoId')
@@ -226,5 +237,5 @@ export class ProcesosController {
   }
 }
 
-@Module({ controllers: [ProcesosController], providers: [ProcesosService, InicioProcesoService] })
+@Module({ imports: [GeneracionesModule], controllers: [ProcesosController], providers: [ProcesosService, InicioProcesoService] })
 export class ProcesosModule {}

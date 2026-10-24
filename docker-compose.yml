@@ -29,6 +29,7 @@ services:
       - ./db/04_etapa_encuentro.sql:/docker-entrypoint-initdb.d/04_etapa_encuentro.sql:ro
       - ./db/05_fase3_entrevistas.sql:/docker-entrypoint-initdb.d/05_fase3_entrevistas.sql:ro
       - ./db/06_inicio_proceso.sql:/docker-entrypoint-initdb.d/06_inicio_proceso.sql:ro
+      - ./db/07_generaciones.sql:/docker-entrypoint-initdb.d/07_generaciones.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s

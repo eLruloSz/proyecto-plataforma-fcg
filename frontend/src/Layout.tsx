@@ -12,6 +12,7 @@ const MENU = [
   { a: '/avance', texto: 'Avance por etapa' },
   { a: '/comunicacion', texto: 'Comunicación' },
   { a: '/seguimiento', texto: 'Seguimiento por liceo' },
+  { a: '/generaciones', texto: 'Generaciones' },
 ];
 
 export function useProceso() {
