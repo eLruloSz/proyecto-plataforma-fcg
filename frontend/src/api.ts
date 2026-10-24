@@ -51,6 +51,8 @@ export const api = {
   patch: <T>(ruta: string, cuerpo: unknown) => pedir<T>('PATCH', ruta, cuerpo),
   put: <T>(ruta: string, cuerpo: unknown) => pedir<T>('PUT', ruta, cuerpo),
   del: <T>(ruta: string) => pedir<T>('DELETE', ruta),
+  /** POST multipart con varios campos (archivo + datos). */
+  enviarFormulario: <T>(ruta: string, datos: FormData) => pedir<T>('POST', ruta, datos),
   subir: <T>(ruta: string, archivo: File) => {
     const f = new FormData();
     f.append('archivo', archivo);
@@ -135,6 +137,30 @@ export interface Invitado {
   liceo_id: string; liceo_codigo: string; liceo: string; comentarios: number;
   etapa_id: string | null; etapa: string | null; etapa_orden: number | null;
   resultado_etapa: 'PASA' | 'NO_PASA' | null; resultado_confirmado: boolean; faltan: string[];
+}
+/** Importación del Excel de respuestas del formulario (Microsoft Forms). */
+export type CampoFormulario = 'nombre' | 'apellido1' | 'apellido2' | 'rut' | 'liceo' | 'email' | 'telefono';
+export interface InvitadoResumen { id: string; codigo: string; nombre: string; liceo: string; email: string | null; telefono: string | null; rut: string | null }
+export interface FilaFormulario {
+  fila: number;
+  respuesta: { nombre: string | null; rut: string | null; liceo: string | null; email: string | null; telefono: string | null };
+  /** Datos ya validados y normalizados (null si no son válidos). */
+  limpio: { email: string | null; telefono: string | null; rut: string | null };
+  sugerenciaEmail: string | null;
+  liceo: string | null;
+  calce: 'CALZA' | 'AMBIGUO' | 'SIN_CALCE';
+  metodo: 'RUT' | 'NOMBRE' | null;
+  invitado: InvitadoResumen | null;
+  candidatos: InvitadoResumen[];
+  avisos: string[];
+  repetida: boolean;
+}
+export interface PreviaFormulario {
+  hoja: string;
+  columnas: { indice: number; titulo: string; ejemplo: string | null }[];
+  mapeo: Record<CampoFormulario, number | null>;
+  resumen: { respuestas: number; calzan: number; ambiguas: number; sinCalce: number; repetidas: number };
+  filas: FilaFormulario[];
 }
 export interface Encuentro { id: string; fecha: string; enlace: string | null; inscritos: number; asistentes: number }
 export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
