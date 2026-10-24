@@ -261,7 +261,7 @@ function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
         <span className="text-gray-500">(los empates entran todos)</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-gray-500">{elegidos.size} seleccionados</span>
-          <button className="btn-primario" disabled={!elegidos.size} onClick={() => setConfirmando(true)}>Invitar seleccionados</button>
+          <button className="btn-primario" disabled={!elegidos.size} onClick={() => setConfirmando(true)}>Crear Invitados</button>
         </div>
       </div>
 
@@ -315,7 +315,7 @@ function SeleccionInvitados({ liceo }: { liceo: Liceo }) {
       {confirmando && (
         <Modal titulo={`Invitar a ${alumnosElegidos.length} estudiantes`} onCerrar={() => setConfirmando(false)} ancho="max-w-lg"
           pie={<><button className="btn-secundario" onClick={() => setConfirmando(false)}>Cancelar</button>
-            <button className="btn-primario" disabled={invitar.isPending} onClick={() => invitar.mutate()}>Confirmar invitación</button></>}>
+            <button className="btn-primario" disabled={invitar.isPending} onClick={() => invitar.mutate()}>Confirmar</button></>}>
           <p className="mb-3 text-sm text-gray-600">Cada estudiante recibirá su Id (ej. <code>{liceo.codigo}.0XXa</code>) y aparecerá en la lista de Invitados. Un Id entregado no se reutiliza.</p>
           <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
             {alumnosElegidos.map((a) => <li key={a.id}><span className="text-gray-400">{a.posicion_liceo}° del liceo · {a.curso} ({a.posicion_curso}°)</span> {a.nombres} {a.apellido_paterno} <span className="text-gray-400">({nota(a.promedio)})</span></li>)}

@@ -59,7 +59,14 @@ export class AvanceService {
               (p.etapa_id = $1) AS en_esta_etapa,
               r.resultado, COALESCE(r.confirmado, FALSE) AS confirmado, r.confirmado_en, r.avisado_en,
               COALESCE(en.realizada, FALSE) AS entrevista_realizada,
-              en.fecha_hora AS entrevista_fecha, en.comentario AS entrevista_comentario,
+              en.fecha_hora AS entrevista_fecha, en.comentario AS entrevista_comentario, en.estado AS entrevista_estado,
+              (SELECT to_jsonb(fi) - 'postulacion_id' - 'actualizado_por' FROM fichas_postulacion fi WHERE fi.postulacion_id = p.id) AS ficha,
+              (SELECT jsonb_build_object('posicion', rp.posicion, 'puntaje_total', rp.puntaje_total::float,
+                        'puntaje_academico', rp.puntaje_academico::float, 'puntaje_socioeconomico', rp.puntaje_socioeconomico::float,
+                        'puntaje_compromiso', rp.puntaje_compromiso::float, 'finalista', rp.finalista, 'rsh', rp.rsh)
+                 FROM ranking_postulacion rp JOIN cargas ca ON ca.id = rp.carga_id
+                WHERE rp.postulacion_id = p.id AND ca.tipo = 'RANKING' AND ca.proceso_id = p.proceso_id
+                ORDER BY ca.cargado_en DESC LIMIT 1) AS ranking,
               COALESCE((SELECT array_agg(c.requisito_id::text) FROM cumplimientos c
                          JOIN requisitos_etapa q ON q.id = c.requisito_id
                         WHERE c.postulacion_id = p.id AND q.etapa_id = $1 AND q.activo), '{}'::text[]) AS cumplidos
@@ -201,10 +208,13 @@ export class AvanceService {
     await this.etapa(etapaId);
     await this.postulacionDelProceso(postulacionId);
     await this.ds.query(
-      `INSERT INTO entrevistas (postulacion_id, etapa_id, realizada, fecha_hora, comentario, marcado_por)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO entrevistas (postulacion_id, etapa_id, realizada, fecha_hora, comentario, marcado_por, estado)
+       VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $3 THEN 'REALIZADA' WHEN $4::timestamptz IS NULL THEN 'POR_SOLICITAR' ELSE 'CONFIRMADA' END)
        ON CONFLICT (postulacion_id, etapa_id) DO UPDATE
-         SET realizada = $3, fecha_hora = $4, comentario = $5, marcado_por = $6, actualizado_en = NOW()`,
+         SET realizada = $3, fecha_hora = $4, comentario = $5, marcado_por = $6, actualizado_en = NOW(),
+             estado = CASE WHEN $3 THEN 'REALIZADA'
+                           WHEN entrevistas.estado = 'REALIZADA' THEN 'CONFIRMADA'
+                           ELSE entrevistas.estado END`,
       [postulacionId, etapaId, realizada, fechaHora ?? null, comentario ?? null, usuarioId]);
     await this.auditoria.registrar(usuarioId, 'MARCAR_ENTREVISTA', 'postulaciones', postulacionId, { etapaId, realizada });
     return { ok: true };

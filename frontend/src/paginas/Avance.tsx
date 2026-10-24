@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, VistaAvance } from '../api';
+import { api, CargaRanking, VistaAvance } from '../api';
 import { useProceso } from '../Layout';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
+import { CeldaFicha, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
+import { ESTADOS } from './Entrevistas';
 
 type Fila = VistaAvance['estudiantes'][number];
 type Filtro = 'todos' | 'sin-decidir' | 'faltan' | 'pasa' | 'no-pasa' | 'confirmados';
@@ -70,6 +72,15 @@ export function Avance() {
   const [deshaciendo, setDeshaciendo] = useState<Fila | null>(null);
   const [viendoRequisitos, setViendoRequisitos] = useState(false);
   const [configEtapas, setConfigEtapas] = useState(false);
+  const [liceoFiltro, setLiceoFiltro] = useState('');
+  const [orden, setOrden] = useState<'id' | 'ranking'>('ranking');
+  const [fichaDe, setFichaDe] = useState<Fila | null>(null);
+  const [subiendoRanking, setSubiendoRanking] = useState(false);
+  const [marcandoRanking, setMarcandoRanking] = useState(false);
+  // Preselección N°1: ficha de postulación y ranking.
+  const esPre = v?.etapa.clave === 'PRESELECCION';
+  const esEntrevista = ['ENTREVISTA', 'ENTREVISTA_COMITE'].includes(v?.etapa.clave ?? '');
+  const { data: ranking } = useQuery({ queryKey: ['ranking'], queryFn: () => api.get<CargaRanking>('/ranking'), enabled: esPre });
 
   const refrescar = () => CLAVES.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const error409 = (e: Error) => avisar(e.message, 'error');
@@ -108,7 +119,14 @@ export function Avance() {
     onError: (e: Error) => { avisar(e.message, 'error'); setDeshaciendo(null); },
   });
 
+  const liceos = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of v?.estudiantes ?? []) m.set(f.liceo_id, `${f.liceo_codigo}. ${f.liceo}`);
+    return [...m].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [v]);
+
   const filas = useMemo(() => (v?.estudiantes ?? []).filter((f) => {
+    if (liceoFiltro && f.liceo_id !== liceoFiltro) return false;
     const pendiente = f.en_esta_etapa && !f.confirmado;
     if (filtro === 'sin-decidir') return pendiente && !f.resultado;
     if (filtro === 'faltan') return pendiente && f.cumplidos.length < (v?.requisitos.length ?? 0);
@@ -116,7 +134,9 @@ export function Avance() {
     if (filtro === 'no-pasa') return pendiente && f.resultado === 'NO_PASA';
     if (filtro === 'confirmados') return f.confirmado;
     return true;
-  }), [v, filtro]);
+  }).sort((a, b) => (esPre && orden === 'ranking'
+    ? (a.ranking?.posicion ?? Infinity) - (b.ranking?.posicion ?? Infinity)
+    : 0)), [v, filtro, liceoFiltro, esPre, orden]);
 
   if (!proceso || isLoading) return <Cargando />;
   if (error || !v) return <ErrorCarga error={error} />;
@@ -170,6 +190,14 @@ export function Avance() {
           <button className="btn-secundario" disabled={sugerir.isPending} onClick={() => sugerir.mutate()}
             title="Aceptó la invitación → pasa · Rechazó → no pasa">Marcar según respuesta a la invitación</button>
         )}
+        {esPre && (
+          <>
+            <button className="btn-secundario" onClick={() => setSubiendoRanking(true)}>{ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
+            <button className="btn-secundario" disabled={!ranking?.carga} onClick={() => setMarcandoRanking(true)}
+              title={ranking?.carga ? 'Marca avanza / no avanza según el ranking' : 'Primero sube el ranking'}>Marcar según ranking</button>
+          </>
+        )}
+        {esEntrevista && <Link className="btn-secundario" to={`/entrevistas/${e.id}`}>Calendario de entrevistas</Link>}
         <button className="btn-secundario" onClick={() => setViendoRequisitos(true)}>Requisitos ({requisitos.length})</button>
         {r.con_requisitos_pendientes > 0 && (
           <button className="btn-secundario" onClick={() => avisarA('FALTAN_REQUISITOS', false)}>Recordar requisitos pendientes ({r.con_requisitos_pendientes})</button>
@@ -182,8 +210,22 @@ export function Avance() {
       </div>
 
       {/* Tabla */}
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-500">{filas.length} estudiantes</span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm text-gray-500">
+          {filas.length} estudiantes
+          {esPre && ranking?.carga && <> · ranking: {ranking.carga.nombre_archivo}, cargado {fecha(ranking.carga.cargado_en)}</>}
+        </span>
+        <div className="flex flex-wrap gap-2">
+        {esPre && (
+          <select className="input w-auto" value={orden} onChange={(ev) => setOrden(ev.target.value as typeof orden)} aria-label="Ordenar">
+            <option value="ranking">Ordenar por ranking</option>
+            <option value="id">Ordenar por Id</option>
+          </select>
+        )}
+        <select className="input w-auto max-w-[240px]" value={liceoFiltro} onChange={(ev) => setLiceoFiltro(ev.target.value)} aria-label="Filtrar por liceo">
+          <option value="">Todos los liceos</option>
+          {liceos.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+        </select>
         <select className="input w-auto" value={filtro} onChange={(ev) => setFiltro(ev.target.value as Filtro)} aria-label="Filtrar">
           <option value="todos">Todos</option>
           <option value="sin-decidir">Sin decidir</option>
@@ -192,24 +234,39 @@ export function Avance() {
           <option value="no-pasa">Marcados “no pasa”</option>
           <option value="confirmados">Ya confirmados</option>
         </select>
+        </div>
       </div>
       <div className="tarjeta overflow-x-auto">
         <table className="tabla">
           <thead>
             <tr>
+              {esPre && <th title="Lugar en el ranking y puntaje total">Ranking</th>}
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th className="text-right">Prom.</th>
+              {esPre && <th>RSH y hogar</th>}
+              {esEntrevista && <th>Entrevista</th>}
               {primera && <th>Aceptó postular</th>}
               {requisitos.map((q) => <th key={q.id} className="min-w-[90px] text-center leading-tight">{q.nombre}</th>)}
               <th className="min-w-[170px]">Resultado</th>
             </tr>
           </thead>
           <tbody>
-            {filas.length === 0 && <tr><td colSpan={6 + requisitos.length}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
+            {filas.length === 0 && <tr><td colSpan={6 + requisitos.length + (esPre ? 2 : 0) + (esEntrevista ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
             {filas.map((f) => {
               const bloqueado = f.confirmado || !f.en_esta_etapa;
               const fondo = f.confirmado ? 'bg-gray-50 text-gray-500' : f.resultado === 'PASA' ? 'bg-green-50/70' : f.resultado === 'NO_PASA' ? 'bg-red-50/60' : '';
               return (
                 <tr key={f.id} className={fondo}>
+                  {esPre && (
+                    <td className="whitespace-nowrap">
+                      {f.ranking ? (
+                        <>
+                          <div><strong className="tabular-nums">{f.ranking.posicion ?? '—'}°</strong>
+                            <span className="ml-1 text-xs text-gray-500">{f.ranking.puntaje_total ?? '—'} pts</span></div>
+                          {f.ranking.finalista && <Etiqueta tono="azul">Finalista</Etiqueta>}
+                        </>
+                      ) : <span className="text-xs text-gray-400">sin ranking</span>}
+                    </td>
+                  )}
                   <td className="font-mono text-xs">{f.codigo}</td>
                   <td className={`whitespace-nowrap ${f.resultado === 'NO_PASA' ? 'line-through decoration-red-400' : ''}`}>
                     {f.apellido_paterno} {f.apellido_materno}, {f.nombres}
@@ -217,6 +274,17 @@ export function Avance() {
                   </td>
                   <td className="max-w-[160px] truncate text-gray-600" title={f.liceo}>{f.liceo}</td>
                   <td className="text-right tabular-nums">{nota(f.promedio)}</td>
+                  {esPre && <td><CeldaFicha f={f} onAbrir={() => setFichaDe(f)} /></td>}
+                  {esEntrevista && (
+                    <td className="whitespace-nowrap text-xs">
+                      <Link to={`/entrevistas/${e.id}`} className="hover:underline">
+                        {f.entrevista_estado
+                          ? <span className={`rounded border px-1.5 py-0.5 ${ESTADOS[f.entrevista_estado].chip}`}>{ESTADOS[f.entrevista_estado].texto}</span>
+                          : <span className="text-gray-400">por agendar</span>}
+                        {f.entrevista_fecha && <span className="ml-1.5 text-gray-500">{fecha(f.entrevista_fecha)}</span>}
+                      </Link>
+                    </td>
+                  )}
                   {primera && (
                     <td>{f.confirmacion === 'CONFIRMADO' ? <Etiqueta tono="verde">Sí</Etiqueta> : f.confirmacion === 'RECHAZADO' ? <Etiqueta tono="rojo">No</Etiqueta> : <Etiqueta tono="amarillo">Sin respuesta</Etiqueta>}</td>
                   )}
@@ -299,6 +367,12 @@ export function Avance() {
       )}
       {viendoRequisitos && <Requisitos vista={v} onCerrar={() => setViendoRequisitos(false)} />}
       {configEtapas && <ConfigurarEtapas onCerrar={() => setConfigEtapas(false)} />}
+      {fichaDe && <FichaModal estudiante={fichaDe} onCerrar={() => setFichaDe(null)} />}
+      {subiendoRanking && <SubirRanking onCerrar={() => setSubiendoRanking(false)} />}
+      {marcandoRanking && (
+        <MarcarSegunRanking etapaId={e.id} cupo={e.cupo} onCerrar={() => setMarcandoRanking(false)}
+          finalistas={v.estudiantes.filter((x) => x.ranking?.finalista && x.en_esta_etapa).length} />
+      )}
       <p className="text-xs text-gray-400">¿Buscas a un estudiante en particular? Revisa <Link to="/invitados" className="underline">Invitados</Link>.</p>
     </div>
   );

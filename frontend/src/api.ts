@@ -223,11 +223,57 @@ export interface VistaAvance {
     nombres: string; apellido_paterno: string; apellido_materno: string | null; email: string | null;
     liceo_id: string; liceo_codigo: string; liceo: string; en_esta_etapa: boolean;
     resultado: 'PASA' | 'NO_PASA' | null; confirmado: boolean; confirmado_en: string | null; avisado_en: string | null; cumplidos: string[];
+    ficha: FichaPostulacion | null;
+    ranking: RankingEstudiante | null;
+    entrevista_fecha?: string | null; entrevista_estado?: EstadoEntrevista | null; entrevista_realizada?: boolean;
   }[];
   resumen: {
     total: number; pendientes_de_decidir: number; marcados_pasa: number; marcados_no_pasa: number;
     confirmados_pasa: number; confirmados_no_pasa: number; sin_avisar_pasa: number; sin_avisar_no_pasa: number; con_requisitos_pendientes: number;
+    sin_entrevistar?: number;
   };
+}
+
+// --- Preselección N°1: ficha de postulación y ranking ------------------------
+/** Datos que la fundación digita mirando la cartola del RSH (la cartola no se guarda). */
+export interface FichaPostulacion {
+  tramo_rsh: number | null; rsh_pendiente: boolean; rsh_actualizada: string | null;
+  personas_hogar: number | null; menores_18: number | null; mayores_60: number | null;
+  con_discapacidad: number | null; con_dependencia: number | null; con_invalidez: number | null; con_nee: number | null;
+  ingresos_hogar: string | null; personas_formulario: number | null; observaciones: string | null; actualizado_en: string;
+}
+export interface RankingEstudiante {
+  posicion: number | null; puntaje_total: number | null; puntaje_academico: number | null;
+  puntaje_socioeconomico: number | null; puntaje_compromiso: number | null; finalista: boolean; rsh: string | null;
+}
+export interface FilaRankingPrevia {
+  fila: number; id: string | null; establecimiento: string | null; apellidoPaterno: string | null; apellidoMaterno: string | null; nombre: string | null;
+  notas: number | null; puntajeAcademico: number | null; rsh: string | null; puntajeSocioeconomico: number | null; puntajeCompromiso: number | null;
+  puntajeTotal: number | null; finalista: boolean; posicion: number | null;
+  postulacion: { id: string; codigo: string; nombre: string; liceo: string } | null; avisos: string[];
+}
+export interface PreviaRanking {
+  hojas: { nombre: string; filas: number }[]; hoja: string | null; filas: FilaRankingPrevia[]; advertencias: string[];
+  anterior: { nombre_archivo: string; cargado_en: string } | null;
+  resumen: { filas: number; calzan: number; sinCalce: number; finalistas: number; conAvisos: number };
+}
+export interface CargaRanking { carga: { id: string; nombre_archivo: string; cargado_en: string; filas_ok: number; advertencias: Observacion[] } | null }
+
+// --- Calendario de entrevistas ----------------------------------------------
+export type EstadoEntrevista = 'POR_SOLICITAR' | 'SOLICITADA' | 'CONFIRMADA' | 'REALIZADA' | 'CANCELADA' | 'CONFLICTO';
+export interface EntrevistaAgenda { fecha_hora: string | null; estado: EstadoEntrevista; comentario: string | null; actualizado_en: string }
+export interface EstudianteAgenda {
+  id: string; codigo: string; nombres: string; apellido_paterno: string; apellido_materno: string | null;
+  email: string | null; telefono: string | null; liceo_codigo: string; liceo: string;
+  en_esta_etapa: boolean; resultado: 'PASA' | 'NO_PASA' | null; confirmado: boolean;
+  entrevista: EntrevistaAgenda | null;
+}
+/** Bloqueo de agenda: un día completo (hora null) o un bloque ("HH:MM"). */
+export interface BloqueoAgenda { id: string; fecha: string; hora: string | null; motivo: string }
+export interface CalendarioEntrevistas {
+  etapa: { id: string; orden: number; nombre: string; clave: string | null; cupo: number | null; estado: string; horas: string[] };
+  estudiantes: EstudianteAgenda[];
+  bloqueos: BloqueoAgenda[];
 }
 
 // --- Histórico de generaciones ---------------------------------------------
