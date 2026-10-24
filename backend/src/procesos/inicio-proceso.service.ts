@@ -11,7 +11,7 @@ const ETAPAS_POR_DEFECTO: { nombre: string; descripcion: string; clave?: string;
   { nombre: 'Invitación a establecimientos', descripcion: 'Presentación a liceos, solicitud de nóminas y definición de invitados' },
   { nombre: 'Presentación de la beca', descripcion: 'Encuentro online con los invitados (3 fechas)', clave: 'ENCUENTRO' },
   {
-    nombre: 'Preselección N°1', descripcion: 'Cuestionario, documentos y ranking: 60 a entrevista', cupo: 60,
+    nombre: 'Preselección N°1', descripcion: 'Cuestionario, documentos y ranking: 60 a entrevista', clave: 'PRESELECCION', cupo: 60,
     requisitos: ['Formulario de postulación', 'Cartola RSH', 'Certificado de notas', 'Declaración de ingresos'],
   },
   { nombre: 'Preselección N°2', descripcion: 'Entrevistas presenciales: 20 finalistas', clave: 'ENTREVISTA', cupo: 20 },

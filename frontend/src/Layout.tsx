@@ -10,6 +10,7 @@ const MENU = [
   { a: '/liceos', texto: 'Liceos y nóminas' },
   { a: '/invitados', texto: 'Invitados' },
   { a: '/avance', texto: 'Avance por etapa' },
+  { a: '/entrevistas', texto: 'Entrevistas' },
   { a: '/comunicacion', texto: 'Comunicación' },
   { a: '/seguimiento', texto: 'Seguimiento por liceo' },
   { a: '/generaciones', texto: 'Generaciones' },

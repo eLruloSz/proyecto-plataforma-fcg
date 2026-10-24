@@ -8,6 +8,7 @@ export const HITO_POR_PROPOSITO: Record<string, string | undefined> = {
   SOLICITUD_CONTACTOS: 'MAIL_APROBACION',
   INVITACION_ESTUDIANTES: 'INVITACION_ESTUDIANTES',
   AGRADECIMIENTO: 'MAIL_AGRADECIMIENTO',
+  INFORME_LICEO: 'AVISO_RESULTADOS',
 };
 
 /** Hito que se marca solo cuando el liceo responde un correo con ese propósito. */

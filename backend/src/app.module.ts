@@ -14,6 +14,8 @@ import { InvitadosModule } from './invitados/invitados.module';
 import { ComunicacionModule } from './comunicacion/comunicacion.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { AvanceModule } from './avance/avance.module';
+import { PreseleccionModule } from './preseleccion/preseleccion.module';
+import { EntrevistasModule } from './entrevistas/entrevistas.module';
 import { GeneracionesModule } from './generaciones/generaciones.module';
 
 @Module({
@@ -40,6 +42,8 @@ import { GeneracionesModule } from './generaciones/generaciones.module';
     ComunicacionModule,
     DashboardModule,
     AvanceModule,
+    PreseleccionModule,
+    EntrevistasModule,
     GeneracionesModule,
   ],
   providers: [
