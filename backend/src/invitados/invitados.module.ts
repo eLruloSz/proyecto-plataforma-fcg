@@ -1,10 +1,16 @@
-import { Body, Controller, Delete, Get, Module, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID,
-  MaxLength, MinLength, ValidateIf,
+  MaxLength, MinLength, ValidateIf, ValidateNested,
 } from 'class-validator';
 import { InvitadosService } from './invitados.service';
+import { ImportarContactosService } from './importar-contactos.service';
+import { TAMANO_MAXIMO } from '../common/archivos.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 
 class InvitarDto {
@@ -19,6 +25,16 @@ class ActualizarInvitadoDto {
   @IsOptional() @ValidateIf((o) => o.encuentroEventoId !== null) @IsUUID() encuentroEventoId?: string | null;
   @IsOptional() @ValidateIf((o) => o.asistioEncuentro !== null) @IsBoolean() asistioEncuentro?: boolean | null;
 }
+class CambioContactoDto {
+  @IsUUID() invitadoId: string;
+  @IsOptional() @ValidateIf((o) => o.email !== null) @IsString() @MaxLength(255) email?: string | null;
+  @IsOptional() @ValidateIf((o) => o.telefono !== null) @IsString() @MaxLength(60) telefono?: string | null;
+  @IsOptional() @ValidateIf((o) => o.rut !== null) @IsString() @MaxLength(15) rut?: string | null;
+}
+class ImportarContactosDto {
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(2000) @ValidateNested({ each: true }) @Type(() => CambioContactoDto)
+  cambios: CambioContactoDto[];
+}
 class ComentarioDto {
   @IsString() @MinLength(1) @MaxLength(4000) texto: string;
 }
@@ -27,7 +43,27 @@ class ComentarioDto {
 @ApiBearerAuth()
 @Controller()
 export class InvitadosController {
-  constructor(private readonly svc: InvitadosService) {}
+  constructor(private readonly svc: InvitadosService, private readonly importar: ImportarContactosService) {}
+
+  /**
+   * Excel de respuestas del formulario (Microsoft Forms): muestra a qué invitado
+   * corresponde cada respuesta y qué datos cambiarían. No guarda nada.
+   * `mapeo` (opcional, JSON) fija las columnas: {"nombre":5,"rut":7,"email":8,...}
+   */
+  @Post('invitados/importar-contactos/previsualizar')
+  @HttpCode(200)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO } }))
+  previsualizarContactos(@UploadedFile() archivo: Express.Multer.File, @Body('mapeo') mapeo?: string) {
+    return this.importar.previsualizar(archivo, mapeo);
+  }
+
+  /** Guarda los datos de contacto elegidos en la revisión. */
+  @Post('invitados/importar-contactos')
+  @HttpCode(200)
+  confirmarContactos(@Body() dto: ImportarContactosDto, @Usuario() u: UsuarioSesion) {
+    return this.importar.confirmar(dto.cambios, u.id);
+  }
 
   @Post('invitados')
   invitar(@Body() dto: InvitarDto, @Usuario() u: UsuarioSesion) {
@@ -65,5 +101,5 @@ export class InvitadosController {
   }
 }
 
-@Module({ controllers: [InvitadosController], providers: [InvitadosService] })
+@Module({ controllers: [InvitadosController], providers: [InvitadosService, ImportarContactosService] })
 export class InvitadosModule {}

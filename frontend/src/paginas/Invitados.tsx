@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Confirmacion, Encuentro, Invitado } from '../api';
 import { useProceso } from '../Layout';
+import { ImportarContactos } from './ImportarContactos';
 import { Cargando, ErrorCarga, Etiqueta, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 
 function useActualizar() {
@@ -78,6 +79,7 @@ export function Invitados() {
   const [filtro, setFiltro] = useState<'todos' | Confirmacion | 'sin-email'>('todos');
   const [q, setQ] = useState('');
   const [liceoId, setLiceoId] = useState('');
+  const [importando, setImportando] = useState(false);
   const [comentando, setComentando] = useState<Invitado | null>(null);
   const [quitando, setQuitando] = useState<Invitado | null>(null);
   const quitar = useMutation({
@@ -132,6 +134,9 @@ export function Invitados() {
           )}
         </div>
         <div className="flex gap-2">
+          <button className="btn-secundario" onClick={() => setImportando(true)} title="Cargar email, teléfono y RUT desde el Excel de Microsoft Forms">
+            Importar respuestas del formulario
+          </button>
           <input className="input w-56" placeholder="Buscar por nombre o Id…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
           <select className="input w-auto max-w-[260px]" value={liceoId} onChange={(e) => setLiceoId(e.target.value)} aria-label="Filtrar por liceo">
             <option value="">Todos los liceos</option>
@@ -219,6 +224,7 @@ export function Invitados() {
         </table>
       </div>
 
+      {importando && <ImportarContactos invitados={data!} onCerrar={() => setImportando(false)} />}
       {comentando && <Comentarios inv={comentando} onCerrar={() => setComentando(null)} />}
       {quitando && (
         <Modal titulo="Quitar invitado" onCerrar={() => setQuitando(null)} ancho="max-w-md"
