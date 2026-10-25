@@ -235,6 +235,29 @@ export class InvitadosService {
     return filas(r)[0];
   }
 
+  /** Fecha nueva del encuentro online (cada proceso tiene las suyas). */
+  async crearEncuentro(fecha: string, enlace: string | null | undefined, usuarioId: string) {
+    const procesoId = await this.proceso.id();
+    const r = await this.ds.query(
+      `INSERT INTO eventos (proceso_id, tipo, fecha, enlace) VALUES ($1, 'ENCUENTRO_ONLINE', $2, $3) RETURNING id`,
+      [procesoId, fecha, enlace?.trim() || null]);
+    await this.auditoria.registrar(usuarioId, 'CREAR_ENCUENTRO', 'eventos', filas(r)[0]?.id, { fecha });
+    return this.encuentros();
+  }
+
+  /** Solo se puede borrar una fecha sin estudiantes inscritos. */
+  async eliminarEncuentro(id: string, usuarioId: string) {
+    const procesoId = await this.proceso.id();
+    const [e] = await this.ds.query(
+      `SELECT (SELECT COUNT(*)::int FROM postulaciones p WHERE p.encuentro_evento_id = e.id) AS inscritos
+         FROM eventos e WHERE e.id = $1 AND e.proceso_id = $2 AND e.tipo = 'ENCUENTRO_ONLINE'`, [id, procesoId]);
+    if (!e) throw new NotFoundException('Fecha no encontrada.');
+    if (e.inscritos) throw new ConflictException(`Esa fecha tiene ${e.inscritos} estudiante(s) inscrito(s): cámbialos de fecha antes de borrarla.`);
+    await this.ds.query(`DELETE FROM eventos WHERE id = $1`, [id]);
+    await this.auditoria.registrar(usuarioId, 'ELIMINAR_ENCUENTRO', 'eventos', id);
+    return this.encuentros();
+  }
+
   async encuentros() {
     return this.ds.query(
       `SELECT e.id, e.fecha, e.enlace,

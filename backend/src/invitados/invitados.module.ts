@@ -5,7 +5,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID,
+  ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsEmail, IsIn, IsISO8601, IsOptional, IsString, IsUrl, IsUUID,
   MaxLength, MinLength, ValidateIf, ValidateNested,
 } from 'class-validator';
 import { InvitadosService } from './invitados.service';
@@ -34,6 +34,11 @@ class CambioContactoDto {
 class ImportarContactosDto {
   @IsArray() @ArrayNotEmpty() @ArrayMaxSize(2000) @ValidateNested({ each: true }) @Type(() => CambioContactoDto)
   cambios: CambioContactoDto[];
+}
+class EncuentroDto {
+  @IsISO8601() fecha: string;
+  @IsOptional() @ValidateIf((o) => o.enlace !== null && o.enlace !== '') @IsUrl({}, { message: 'El enlace no es una dirección válida.' }) @MaxLength(500)
+  enlace?: string | null;
 }
 class ComentarioDto {
   @IsString() @MinLength(1) @MaxLength(4000) texto: string;
@@ -98,6 +103,16 @@ export class InvitadosController {
   @Get('encuentros')
   encuentros() {
     return this.svc.encuentros();
+  }
+
+  @Post('encuentros')
+  crearEncuentro(@Body() dto: EncuentroDto, @Usuario() u: UsuarioSesion) {
+    return this.svc.crearEncuentro(dto.fecha, dto.enlace, u.id);
+  }
+
+  @Delete('encuentros/:id')
+  eliminarEncuentro(@Param('id', ParseUUIDPipe) id: string, @Usuario() u: UsuarioSesion) {
+    return this.svc.eliminarEncuentro(id, u.id);
   }
 }
 

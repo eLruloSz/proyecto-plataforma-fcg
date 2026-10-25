@@ -226,6 +226,7 @@ export interface VistaAvance {
     ficha: FichaPostulacion | null;
     ranking: RankingEstudiante | null;
     entrevista_fecha?: string | null; entrevista_estado?: EstadoEntrevista | null; entrevista_realizada?: boolean;
+    encuentro_evento_id: string | null; asistio_encuentro: boolean | null;
   }[];
   resumen: {
     total: number; pendientes_de_decidir: number; marcados_pasa: number; marcados_no_pasa: number;
@@ -258,6 +259,18 @@ export interface PreviaRanking {
   resumen: { filas: number; calzan: number; sinCalce: number; finalistas: number; conAvisos: number };
 }
 export interface CargaRanking { carga: { id: string; nombre_archivo: string; cargado_en: string; filas_ok: number; advertencias: Observacion[] } | null }
+
+// --- Tareas de la etapa (pantalla de Inicio) ---------------------------------
+export interface TareaEtapa { clave: string; titulo: string; detalle: string; hecha: boolean; accion?: { texto: string; ruta: string } }
+export interface TareasEtapa {
+  etapa: Etapa & { tipo: 'INVITACION' | 'ENCUENTRO' | 'PRESELECCION' | 'ENTREVISTA' | 'GENERAL' };
+  siguiente: { id: string; orden: number; nombre: string } | null;
+  total_etapas: number;
+  resumen: VistaAvance['resumen'] & { en_etapa: number };
+  tareas: TareaEtapa[];
+  /** Todas las tareas hechas: se puede terminar la etapa. */
+  lista: boolean;
+}
 
 // --- Calendario de entrevistas ----------------------------------------------
 export type EstadoEntrevista = 'POR_SOLICITAR' | 'SOLICITADA' | 'CONFIRMADA' | 'REALIZADA' | 'CANCELADA' | 'CONFLICTO';

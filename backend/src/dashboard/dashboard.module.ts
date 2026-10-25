@@ -1,8 +1,10 @@
-import { Controller, Get, Injectable, Module } from '@nestjs/common';
+import { Controller, Get, Injectable, Module, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { asuntoVisible } from '../comunicacion/variables';
+import { AvanceModule } from '../avance/avance.module';
+import { TareasService } from './tareas.service';
 
 @Injectable()
 export class DashboardService {
@@ -131,9 +133,14 @@ export class DashboardService {
 @ApiBearerAuth()
 @Controller('dashboard')
 export class DashboardController {
-  constructor(private readonly svc: DashboardService) {}
+  constructor(private readonly svc: DashboardService, private readonly tareas: TareasService) {}
   @Get() resumen() { return this.svc.resumen(); }
+
+  /** Tareas de una etapa (por defecto, la etapa en curso) para la pantalla de Inicio. */
+  @Get('tareas') tareasEtapa(@Query('etapaId') etapaId?: string) {
+    return this.tareas.tareas(etapaId && /^[0-9a-f-]{36}$/i.test(etapaId) ? etapaId : undefined);
+  }
 }
 
-@Module({ controllers: [DashboardController], providers: [DashboardService] })
+@Module({ imports: [AvanceModule], controllers: [DashboardController], providers: [DashboardService, TareasService] })
 export class DashboardModule {}
