@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, CargaRanking, VistaAvance } from '../api';
 import { useProceso } from '../Layout';
+import { tipoEtapa, useEtapa } from '../etapa';
+import { TerminarEtapa } from './TerminarEtapa';
+import { FechasEncuentro, fechaEncuentro, useEncuentros } from './Encuentro';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
 import { CeldaFicha, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
@@ -11,8 +14,20 @@ import { ESTADOS } from './Entrevistas';
 type Fila = VistaAvance['estudiantes'][number];
 type Filtro = 'todos' | 'sin-decidir' | 'faltan' | 'pasa' | 'no-pasa' | 'confirmados';
 
+/** Cómo se llama el trabajo de cada etapa y qué se hace en ella. */
+const TITULOS: Record<string, string> = {
+  INVITACION: 'Quién avanza', ENCUENTRO: 'Encuentro online', PRESELECCION: 'Postulantes y ranking', ENTREVISTA: 'Resultados de entrevistas',
+};
+const AYUDA: Record<string, string> = {
+  INVITACION: 'Marca quién sigue a la etapa siguiente según su respuesta a la invitación.',
+  ENCUENTRO: 'Inscribe a cada estudiante en una fecha del encuentro, marca su asistencia y quién avanza.',
+  PRESELECCION: 'Revisa documentos, completa la ficha RSH, sube el ranking y marca quién avanza.',
+  ENTREVISTA: 'Después de las entrevistas, marca quién avanza.',
+  GENERAL: 'Marca quién avanza y quién no.',
+};
+
 /** Tras cualquier cambio de avance hay que refrescar varias vistas. */
-const CLAVES = ['avance', 'proceso', 'dashboard', 'invitados'];
+const CLAVES = ['avance', 'proceso', 'dashboard', 'invitados', 'tareas'];
 
 function Requisitos({ vista, onCerrar }: { vista: VistaAvance; onCerrar: () => void }) {
   const qc = useQueryClient();
@@ -62,7 +77,17 @@ export function Avance() {
   const qc = useQueryClient();
   const avisar = useAviso();
   const { data: proceso } = useProceso();
-  const etapaId = param ?? proceso?.etapas.find((e) => e.estado === 'ACTIVA')?.id ?? proceso?.etapas[0]?.id;
+  const { actual, vista, verEtapa } = useEtapa();
+  // Sin etapa en la dirección, se muestra la que se está mirando (la en curso, salvo en modo consulta).
+  const etapaId = param ?? vista?.id;
+  // Si se llega por un enlace a otra etapa, el menú y el aviso de consulta la siguen.
+  // Una sola vez por enlace: así no "persigue" a la etapa cuando cambia la etapa en curso.
+  const sincronizada = useRef<string | null>(null);
+  useEffect(() => {
+    if (!param || !actual || sincronizada.current === param) return;
+    sincronizada.current = param;
+    if (param !== vista?.id) verEtapa(param === actual.id ? null : param);
+  }, [param, actual, vista, verEtapa]);
   const { data: v, isLoading, error } = useQuery({
     queryKey: ['avance', etapaId], enabled: !!etapaId,
     queryFn: () => api.get<VistaAvance>(`/avance/${etapaId}`),
@@ -77,9 +102,12 @@ export function Avance() {
   const [fichaDe, setFichaDe] = useState<Fila | null>(null);
   const [subiendoRanking, setSubiendoRanking] = useState(false);
   const [marcandoRanking, setMarcandoRanking] = useState(false);
+  const [terminando, setTerminando] = useState<{ mensaje?: string } | null>(null);
   // Preselección N°1: ficha de postulación y ranking.
   const esPre = v?.etapa.clave === 'PRESELECCION';
   const esEntrevista = ['ENTREVISTA', 'ENTREVISTA_COMITE'].includes(v?.etapa.clave ?? '');
+  const esEncuentro = v?.etapa.clave === 'ENCUENTRO';
+  const { data: encuentros } = useEncuentros();
   const { data: ranking } = useQuery({ queryKey: ['ranking'], queryFn: () => api.get<CargaRanking>('/ranking'), enabled: esPre });
 
   const refrescar = () => CLAVES.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -110,6 +138,10 @@ export function Avance() {
     onSuccess: (r) => {
       avisar(`Confirmado: ${r.pasan} pasan${r.siguiente ? ` a ${r.siguiente.nombre}` : ''}, ${r.noPasan} no pasan`);
       setConfirmando(false); refrescar();
+      // Si ya nadie queda por decidir en la etapa en curso, se ofrece pasar a la siguiente (avanza la barra de arriba).
+      if (v && v.etapa.id === actual?.id && v.resumen.pendientes_de_decidir === 0) {
+        setTerminando({ mensaje: 'Todos los estudiantes de esta etapa ya tienen su resultado confirmado.' });
+      }
     },
     onError: error409,
   });
@@ -117,6 +149,17 @@ export function Avance() {
     mutationFn: (f: Fila) => api.post(`/avance/${etapaId}/estudiantes/${f.id}/deshacer`),
     onSuccess: () => { avisar('Confirmación deshecha: el estudiante vuelve a esta etapa con su marca provisoria'); setDeshaciendo(null); refrescar(); },
     onError: (e: Error) => { avisar(e.message, 'error'); setDeshaciendo(null); },
+  });
+
+  const encuentro = useMutation({
+    mutationFn: (x: { f: Fila; datos: { encuentroEventoId?: string | null; asistioEncuentro?: boolean } }) => api.patch(`/invitados/${x.f.id}`, x.datos),
+    onMutate: (x) => actualizarLocal(x.f.id, (f) => ({
+      ...f,
+      ...(x.datos.encuentroEventoId !== undefined ? { encuentro_evento_id: x.datos.encuentroEventoId } : {}),
+      ...(x.datos.asistioEncuentro !== undefined ? { asistio_encuentro: x.datos.asistioEncuentro } : {}),
+    })),
+    onSettled: () => ['avance', 'encuentros', 'tareas'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })),
+    onError: error409,
   });
 
   const liceos = useMemo(() => {
@@ -154,21 +197,19 @@ export function Avance() {
     <div className="max-w-full space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="titulo">Avance por etapa</h1>
-          <p className="text-sm text-gray-500">Marca quién avanza y quién no. Nada cambia hasta que confirmas.</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Etapa {e.orden} de {proceso.etapas.length}</p>
+          <h1 className="titulo">{TITULOS[tipoEtapa(e)] ?? e.nombre}{TITULOS[tipoEtapa(e)] ? <span className="font-normal text-gray-500"> · {e.nombre}</span> : null}</h1>
+          <p className="text-sm text-gray-500">{AYUDA[tipoEtapa(e)]} Nada cambia hasta que confirmas.</p>
         </div>
-        <button className="btn-secundario" onClick={() => setConfigEtapas(true)}>Configurar etapas</button>
+        <div className="flex gap-2">
+          <button className="btn-secundario" onClick={() => setConfigEtapas(true)}>Configurar etapas</button>
+          {e.id === actual?.id && (
+            <button className="btn-secundario" onClick={() => setTerminando({})}>{e.siguiente ? 'Terminar etapa' : 'Última etapa'}</button>
+          )}
+        </div>
       </div>
 
-      {/* Selector de etapa */}
-      <div className="flex flex-wrap gap-2" role="tablist">
-        {proceso.etapas.map((x) => (
-          <button key={x.id} role="tab" aria-selected={x.id === e.id} onClick={() => navegar(`/avance/${x.id}`)}
-            className={`rounded-md border px-3 py-1.5 text-sm ${x.id === e.id ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
-            {x.orden}. {x.nombre} <span className={x.id === e.id ? 'text-gray-300' : 'text-gray-400'}>({x.estudiantes})</span>
-          </button>
-        ))}
-      </div>
+      {esEncuentro && <FechasEncuentro />}
 
       {/* Resumen */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -244,13 +285,14 @@ export function Avance() {
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th className="text-right">Prom.</th>
               {esPre && <th>RSH y hogar</th>}
               {esEntrevista && <th>Entrevista</th>}
+              {esEncuentro && <><th className="min-w-[170px]">Fecha del encuentro</th><th>Asistió</th></>}
               {primera && <th>Aceptó postular</th>}
               {requisitos.map((q) => <th key={q.id} className="min-w-[90px] text-center leading-tight">{q.nombre}</th>)}
               <th className="min-w-[170px]">Resultado</th>
             </tr>
           </thead>
           <tbody>
-            {filas.length === 0 && <tr><td colSpan={6 + requisitos.length + (esPre ? 2 : 0) + (esEntrevista ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
+            {filas.length === 0 && <tr><td colSpan={6 + requisitos.length + (esPre ? 2 : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
             {filas.map((f) => {
               const bloqueado = f.confirmado || !f.en_esta_etapa;
               const fondo = f.confirmado ? 'bg-gray-50 text-gray-500' : f.resultado === 'PASA' ? 'bg-green-50/70' : f.resultado === 'NO_PASA' ? 'bg-red-50/60' : '';
@@ -275,6 +317,21 @@ export function Avance() {
                   <td className="max-w-[160px] truncate text-gray-600" title={f.liceo}>{f.liceo}</td>
                   <td className="text-right tabular-nums">{nota(f.promedio)}</td>
                   {esPre && <td><CeldaFicha f={f} onAbrir={() => setFichaDe(f)} /></td>}
+                  {esEncuentro && (
+                    <>
+                      <td>
+                        <select className="rounded border border-gray-200 px-1.5 py-1 text-xs" value={f.encuentro_evento_id ?? ''} disabled={!f.en_esta_etapa && !f.confirmado}
+                          onChange={(ev) => encuentro.mutate({ f, datos: { encuentroEventoId: ev.target.value || null } })} aria-label={`Fecha del encuentro de ${f.nombres}`}>
+                          <option value="">{encuentros?.length ? 'Sin inscribir' : 'Primero agrega fechas'}</option>
+                          {encuentros?.map((x) => <option key={x.id} value={x.id}>{fechaEncuentro(x.fecha)}</option>)}
+                        </select>
+                      </td>
+                      <td className="text-center">
+                        <input type="checkbox" checked={!!f.asistio_encuentro} disabled={!f.encuentro_evento_id}
+                          onChange={(ev) => encuentro.mutate({ f, datos: { asistioEncuentro: ev.target.checked } })} aria-label={`Asistió ${f.nombres}`} />
+                      </td>
+                    </>
+                  )}
                   {esEntrevista && (
                     <td className="whitespace-nowrap text-xs">
                       <Link to={`/entrevistas/${e.id}`} className="hover:underline">
@@ -367,6 +424,7 @@ export function Avance() {
       )}
       {viendoRequisitos && <Requisitos vista={v} onCerrar={() => setViendoRequisitos(false)} />}
       {configEtapas && <ConfigurarEtapas onCerrar={() => setConfigEtapas(false)} />}
+      {terminando && <TerminarEtapa etapaId={e.id} mensaje={terminando.mensaje} onCerrar={() => setTerminando(null)} />}
       {fichaDe && <FichaModal estudiante={fichaDe} onCerrar={() => setFichaDe(null)} />}
       {subiendoRanking && <SubirRanking onCerrar={() => setSubiendoRanking(false)} />}
       {marcandoRanking && (

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
 import { useProceso } from '../Layout';
+import { PROPOSITOS_DE_ETAPA, tipoEtapa, useEtapa } from '../etapa';
 import { Caja, Etiqueta, useAviso } from '../ui';
 
 interface Inicial {
@@ -35,6 +36,11 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const { data: info } = useQuery({ queryKey: ['variables'], queryFn: () => api.get<{ variables: Record<string, string>; modoSimulacion: boolean }>('/comunicacion/variables') });
 
   const { data: proceso } = useProceso();
+  const { vista } = useEtapa();
+  // Plantillas de la etapa que se está mirando primero; el resto, aparte.
+  const deEtapa = vista ? PROPOSITOS_DE_ETAPA[tipoEtapa(vista)] : [];
+  const plantillasEtapa = (plantillas ?? []).filter((p) => deEtapa.includes(p.proposito));
+  const plantillasOtras = (plantillas ?? []).filter((p) => !deEtapa.includes(p.proposito));
   const filtro = inicial.filtroEtapa;
   const etapaFiltro = proceso?.etapas.find((e) => e.id === filtro?.etapaId);
   const origen = inicial.reenviar ?? inicial.base;
@@ -168,7 +174,14 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
               <label className="label" htmlFor="plantilla">Plantilla</label>
               <select id="plantilla" className="input" value={plantillaId} onChange={(e) => aplicarPlantilla(e.target.value)}>
                 <option value="">Sin plantilla</option>
-                {plantillas?.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                {plantillasEtapa.length > 0 && (
+                  <optgroup label={`Para esta etapa${vista ? ` (${vista.nombre})` : ''}`}>
+                    {plantillasEtapa.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </optgroup>
+                )}
+                <optgroup label={plantillasEtapa.length ? 'Otras plantillas' : 'Plantillas'}>
+                  {plantillasOtras.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </optgroup>
               </select>
               <label className="label mt-2" htmlFor="proposito">Tipo de correo</label>
               <select id="proposito" className="input" value={proposito} onChange={(e) => setProposito(e.target.value)}>

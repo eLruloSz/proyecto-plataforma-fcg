@@ -1,8 +1,9 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, BloqueoAgenda, CalendarioEntrevistas, EstadoEntrevista, EstudianteAgenda } from '../api';
 import { useProceso } from '../Layout';
+import { useEtapa } from '../etapa';
 import { Caja, Cargando, ErrorCarga, fecha, Modal, useAviso, Vacio } from '../ui';
 
 /** Mismos estados y colores que la planilla de la fundación. */
@@ -42,11 +43,19 @@ function Chip({ estado, children, onClick, alerta }: { estado: EstadoEntrevista;
  */
 export function Entrevistas() {
   const { etapaId: param } = useParams<{ etapaId?: string }>();
-  const navegar = useNavigate();
   const { data: proceso } = useProceso();
+  const { actual, vista, verEtapa } = useEtapa();
   const etapasEntrevista = useMemo(
     () => proceso?.etapas.filter((e) => CLAVES_ENTREVISTA.includes(e.clave ?? '')) ?? [], [proceso]);
-  const etapaId = param ?? etapasEntrevista.find((e) => e.estado === 'ACTIVA')?.id ?? etapasEntrevista[0]?.id;
+  // La etapa de la dirección; si no viene, la que se está mirando (si es de entrevistas) o la primera de entrevistas.
+  const etapaId = param ?? (vista && CLAVES_ENTREVISTA.includes(vista.clave ?? '') ? vista.id : etapasEntrevista[0]?.id);
+  // Una sola vez por enlace: así no "persigue" a la etapa cuando cambia la etapa en curso.
+  const sincronizada = useRef<string | null>(null);
+  useEffect(() => {
+    if (!param || !actual || sincronizada.current === param) return;
+    sincronizada.current = param;
+    if (param !== vista?.id) verEtapa(param === actual.id ? null : param);
+  }, [param, actual, vista, verEtapa]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['entrevistas', etapaId], enabled: !!etapaId,
@@ -99,19 +108,9 @@ export function Entrevistas() {
     <div className="max-w-full space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="titulo">Entrevistas</h1>
+          <h1 className="titulo">Calendario de entrevistas <span className="font-normal text-gray-500">· {data.etapa.nombre}</span></h1>
           <p className="text-sm text-gray-500">Haz clic en un bloque libre para agendar, o en una entrevista para cambiar su estado, moverla o comentar.</p>
         </div>
-        {etapasEntrevista.length > 1 && (
-          <div className="flex gap-2" role="tablist">
-            {etapasEntrevista.map((x) => (
-              <button key={x.id} role="tab" aria-selected={x.id === etapaId} onClick={() => navegar(`/entrevistas/${x.id}`)}
-                className={`rounded-md border px-3 py-1.5 text-sm ${x.id === etapaId ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}>
-                {x.orden}. {x.nombre}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Leyenda con totales */}

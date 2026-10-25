@@ -53,7 +53,7 @@ export class AvanceService {
       `SELECT id, nombre, orden FROM requisitos_etapa WHERE etapa_id = $1 AND activo ORDER BY orden, creado_en`, [etapaId]);
 
     const estudiantes = await this.ds.query(
-      `SELECT p.id, p.codigo, p.curso, p.promedio::float, p.estado, p.confirmacion,
+      `SELECT p.id, p.codigo, p.curso, p.promedio::float, p.estado, p.confirmacion, p.encuentro_evento_id, p.asistio_encuentro,
               pe.nombres, pe.apellido_paterno, pe.apellido_materno, pe.email,
               l.id AS liceo_id, l.codigo AS liceo_codigo, l.nombre AS liceo,
               (p.etapa_id = $1) AS en_esta_etapa,
