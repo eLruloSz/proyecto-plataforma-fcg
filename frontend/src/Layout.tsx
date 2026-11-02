@@ -144,10 +144,10 @@ export function Layout() {
           de etapas quedan quietos (y lo "sticky" de las páginas funciona). */}
       <div className="flex h-screen overflow-hidden">
         <aside className="flex w-56 flex-shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-gray-50">
-          <div className="border-b border-gray-200 px-4 py-4">
+          <NavLink to="/" end title="Ir al inicio" className="block border-b border-gray-200 px-4 py-4 hover:bg-gray-100">
             <div className="text-sm font-bold tracking-tight text-gray-900">Beca Carmen Goudie</div>
             <div className="mt-0.5 text-xs text-gray-500">{proceso?.nombre ?? 'Sistema de gestión'}</div>
-          </div>
+          </NavLink>
           <nav className="flex-1 p-2">
             <NavLink to="/" end className={enlace}>Inicio</NavLink>
             {vista && (
@@ -161,13 +161,14 @@ export function Layout() {
                 </div>
               </div>
             )}
-            <div className="mt-3 border-t border-gray-200 pt-3">
+            <div className="mt-3 space-y-0.5 border-t border-gray-200 pt-3">
+              <NavLink to="/seguimiento" className={enlace}>Seguimiento por liceo</NavLink>
               <NavLink to="/comunicacion" className={enlace}>Comunicación</NavLink>
             </div>
           </nav>
           <div className="px-2 pb-2">
             <NavLink to="/generaciones" className={({ isActive }) => `block rounded-md px-3 py-1.5 text-xs ${isActive ? 'font-semibold text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}>
-              Generaciones anteriores
+              Concursos anteriores
             </NavLink>
           </div>
           <div className="border-t border-gray-200 p-3 text-xs">

@@ -10,6 +10,21 @@ type Fila = VistaAvance['estudiantes'][number];
 // ---------------------------------------------------------------------------
 
 /** "0 a 40%", "41 a 50%"… como lo dice la cartola. */
+const clp = (n: number) => `$${Math.round(n).toLocaleString('es-CL')}`;
+
+/**
+ * Ingreso aproximado por persona. La cartola da el ingreso del hogar como un rango
+ * ("Entre $290.000 y $390.000"): se toma el punto medio y se divide por las personas
+ * del hogar. Es solo una referencia para comparar, no un dato exacto.
+ */
+export function ingresoPorPersona(texto: string | null | undefined, personas: number | null | undefined): string | null {
+  if (!texto || !personas || personas < 1) return null;
+  const montos = (texto.match(/\d{1,3}(?:\.\d{3})+|\d+/g) ?? []).map((m) => Number(m.replace(/\./g, ''))).filter((n) => n > 0);
+  if (!montos.length) return null;
+  const hogar = montos.length >= 2 ? (montos[0] + montos[1]) / 2 : montos[0];
+  return `≈ ${clp(hogar / personas)} por persona`;
+}
+
 export const textoTramo = (t: number) => (t === 40 ? '0 a 40%' : `${t - 9} a ${t}%`);
 
 /** Alertas de la ficha: lo que la fundación revisa a mano hoy. */
@@ -40,6 +55,9 @@ export function CeldaFicha({ f, onAbrir }: { f: Fila; onAbrir: () => void }) {
           <div className="text-gray-800">
             {f.ficha.rsh_pendiente ? 'RSH pendiente' : f.ficha.tramo_rsh ? `Tramo ${textoTramo(f.ficha.tramo_rsh)}` : 'Sin tramo'}
             {f.ficha.personas_hogar ? <span className="text-gray-400"> · {f.ficha.personas_hogar} pers.</span> : null}
+            {ingresoPorPersona(f.ficha.ingresos_hogar, f.ficha.personas_hogar) && (
+              <span className="text-gray-400"> · {ingresoPorPersona(f.ficha.ingresos_hogar, f.ficha.personas_hogar)}</span>
+            )}
             {apoyo > 0 && <span className="text-gray-400"> · {apoyo} con apoyo</span>}
           </div>
           {alertas.map((x) => <div key={x.texto} className={x.tono === 'rojo' ? 'text-red-700' : 'text-yellow-800'}>⚠ {x.texto}</div>)}
@@ -159,6 +177,9 @@ export function FichaModal({ estudiante, onCerrar }: { estudiante: Fila; onCerra
           <label className="block">
             <span className="label">Total ingresos del hogar (como lo dice la cartola)</span>
             <input className="input py-1.5" placeholder="Ej: Entre $290.000 y $390.000" value={d.ingresos} onChange={(e) => set('ingresos', e.target.value)} />
+            {ingresoPorPersona(d.ingresos, aNumero(d.personas)) && (
+              <span className="mt-1 block text-xs text-gray-500">{ingresoPorPersona(d.ingresos, aNumero(d.personas))} (aproximado: punto medio del rango ÷ personas del hogar)</span>
+            )}
           </label>
           {numero('formulario', 'Personas según el formulario', 1)}
         </section>

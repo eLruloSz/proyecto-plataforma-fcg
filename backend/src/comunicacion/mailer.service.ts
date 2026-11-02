@@ -13,7 +13,10 @@ export interface Correo {
 /**
  * Envío por SMTP. En desarrollo apunta a Mailpit (docker-compose), que atrapa
  * todos los correos y los muestra en http://localhost:8025 sin enviarlos.
- * En producción se configura el SMTP del proveedor (ej. Brevo).
+ * En producción se configura el SMTP de la fundación: MAIL_FROM es la casilla
+ * corporativa desde la que sale todo (así los liceos responden con un simple
+ * "Responder"), MAIL_CC recibe copia de cada correo y MAIL_REPLY_TO (opcional)
+ * fuerza a dónde llegan las respuestas.
  * Si SMTP_HOST no está definido, funciona en modo simulación (solo registra).
  */
 @Injectable()
@@ -21,9 +24,15 @@ export class MailerService {
   private readonly log = new Logger('Correo');
   private readonly transporte: nodemailer.Transporter | null;
   private readonly remitente: string;
+  /** Copia de cada correo (ej. Max). Varias direcciones separadas por coma. */
+  private readonly copia?: string;
+  /** Si se define, las respuestas llegan siempre a esta casilla (ej. la de Mónica), sin importar quién envía desde el sistema. */
+  private readonly responderPorDefecto?: string;
 
   constructor(cfg: ConfigService) {
     this.remitente = cfg.get('MAIL_FROM') ?? 'Fundación Carmen Goudie <no-responder@localhost>';
+    this.copia = cfg.get<string>('MAIL_CC')?.trim() || undefined;
+    this.responderPorDefecto = cfg.get<string>('MAIL_REPLY_TO')?.trim() || undefined;
     const host = cfg.get<string>('SMTP_HOST');
     this.transporte = host
       ? nodemailer.createTransport({
@@ -48,7 +57,8 @@ export class MailerService {
     const info = await this.transporte.sendMail({
       from: this.remitente,
       to: c.para,
-      replyTo: c.responderA,
+      cc: this.copia,
+      replyTo: this.responderPorDefecto ?? c.responderA,
       subject: c.asunto,
       text: c.texto,
       html: textoAHtml(c.texto),

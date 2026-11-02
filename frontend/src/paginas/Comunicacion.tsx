@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, EnvioDetalle, EnvioResumen, FiltroEtapa, GRUPOS, Plantilla, PROPOSITOS, TipoFiltroEtapa } from '../api';
+import { api, Dashboard as ResumenInicio, EnvioDetalle, EnvioResumen, FiltroEtapa, GRUPOS, Plantilla, PROPOSITOS, TipoFiltroEtapa } from '../api';
 import { Cargando, ErrorCarga, Etiqueta, fecha, Modal, useAviso, Vacio } from '../ui';
 import { Redactor } from './Redactor';
 
@@ -10,6 +10,30 @@ function Progreso({ hecho, total }: { hecho: number; total: number }) {
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-20 rounded bg-gray-200"><div className="h-1.5 rounded bg-green-600" style={{ width: `${total ? (hecho / total) * 100 : 0}%` }} /></div>
       <span className="text-xs tabular-nums text-gray-600">{hecho}/{total}</span>
+    </div>
+  );
+}
+
+/** Cuántos respondieron a la invitación y qué respondieron (mismos datos del Inicio, a mano en Comunicación). */
+function RespuestasInvitacion() {
+  const { data } = useQuery({ queryKey: ['dashboard'], queryFn: () => api.get<ResumenInicio>('/dashboard') });
+  if (!data) return null;
+  const e = data.embudo;
+  const respondieron = e.confirmaron + e.rechazaron;
+  const celdas: { valor: string; texto: string; tono?: string }[] = [
+    { valor: `${respondieron} de ${e.invitados}`, texto: 'respondieron la invitación' },
+    { valor: String(e.confirmaron), texto: 'respondieron SÍ (aceptan postular)', tono: 'text-green-700' },
+    { valor: String(e.rechazaron), texto: 'respondieron NO', tono: e.rechazaron ? 'text-red-700' : undefined },
+    { valor: String(e.sin_respuesta), texto: 'sin respuesta', tono: e.sin_respuesta ? 'text-yellow-600' : undefined },
+  ];
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Respuestas a la invitación">
+      {celdas.map((c) => (
+        <div key={c.texto} className="tarjeta p-3">
+          <div className={`text-xl font-bold ${c.tono ?? 'text-gray-900'}`}>{c.valor}</div>
+          <div className="text-xs text-gray-500">{c.texto}</div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -235,7 +259,7 @@ export function Comunicacion() {
           </button>
         ))}
       </div>
-      {pestana === 'envios' ? <ListaEnvios /> : <Plantillas onUsar={(id) => setParams({ plantilla: id })} />}
+      {pestana === 'envios' ? <><RespuestasInvitacion /><ListaEnvios /></> : <Plantillas onUsar={(id) => setParams({ plantilla: id })} />}
     </div>
   );
 }

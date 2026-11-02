@@ -72,7 +72,7 @@ function Bienvenida({ inicio }: { inicio: InicioProceso }) {
             <label className="flex max-w-xl cursor-pointer items-start gap-2.5 pt-1 text-sm text-gray-800">
               <input type="checkbox" className="mt-0.5 h-4 w-4 flex-shrink-0 accent-marca-700" checked={usarBase} onChange={(e) => setUsarBase(e.target.checked)} />
               <span>
-                Usar la generación {inicio.ultimo.anio} como base: sus etapas (con cupos y requisitos) y los mismos liceos participantes.
+                Usar el concurso {inicio.ultimo.anio} como base: sus etapas (con cupos y requisitos) y los mismos liceos participantes.
                 <span className="block text-xs text-gray-500">Las plantillas de correo y los contactos de los liceos se mantienen siempre.</span>
               </span>
             </label>
@@ -99,7 +99,7 @@ function Bienvenida({ inicio }: { inicio: InicioProceso }) {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Generaciones</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Concursos anteriores</h2>
           <p className="mt-1 text-sm text-gray-500">Procesos de años anteriores. Se pueden consultar, pero no modificar.</p>
         </div>
         <ListaGeneraciones />
