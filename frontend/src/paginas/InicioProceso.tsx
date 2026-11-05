@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, Route, Routes, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, BorradorProceso, Contacto, InicioProceso, Liceo } from '../api';
 import { useSesion } from '../sesion';
 import { Caja, Cargando, ErrorCarga, Etiqueta, Modal, useAviso, Vacio } from '../ui';
 import { DetalleGeneracion, ListaGeneraciones } from './Generaciones';
+import { useProceso } from '../Layout';
 
 /** Estado del proceso anual: si hay uno activo, uno en preparación o ninguno. */
 export function useInicio(habilitado = true) {
@@ -14,12 +15,15 @@ export function useInicio(habilitado = true) {
 const CLAVE_LISTA = ['liceos', 'todos'];
 
 /**
- * Pantalla que se muestra mientras no hay un proceso activo: primero el botón
- * "Iniciar proceso" junto con las generaciones de años anteriores, luego la
- * revisión de liceos y la confirmación.
+ * Pantalla de inicio. Sin proceso activo: el botón "Iniciar proceso" junto con
+ * las generaciones de años anteriores, luego la revisión de liceos y la
+ * confirmación. Con un proceso activo se abre en /inicio (desde "Beca Carmen
+ * Goudie" del menú): muestra el proceso en curso y las generaciones.
  */
 export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
   const { usuario, salir } = useSesion();
+  // Con proceso activo esta pantalla vive bajo /inicio; sin proceso, en la raíz.
+  const base = inicio.activo ? '/inicio' : '';
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 bg-white">
@@ -28,6 +32,9 @@ export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
             <div className="text-sm font-bold tracking-tight text-gray-900">Beca Carmen Goudie</div>
             <div className="text-xs text-gray-500">Sistema de gestión</div>
           </div>
+          {inicio.activo && (
+            <Link to="/" className="btn-secundario btn-chico ml-auto mr-6">Ir al {inicio.activo.nombre} →</Link>
+          )}
           <div className="text-right text-xs">
             <div className="font-medium text-gray-800">{usuario?.nombre}</div>
             <button onClick={salir} className="text-gray-500 hover:text-gray-900">Cerrar sesión</button>
@@ -37,8 +44,8 @@ export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
       <main className="mx-auto max-w-6xl px-6 py-8">
         {inicio.borrador ? <RevisionLiceos borrador={inicio.borrador} /> : (
           <Routes>
-            <Route path="generaciones/:anio" element={<DetalleGeneracion volver="/" />} />
-            <Route path="*" element={<Bienvenida inicio={inicio} />} />
+            <Route path="generaciones/:anio" element={<DetalleGeneracion volver={base || '/'} />} />
+            <Route path="*" element={<Bienvenida inicio={inicio} base={base} />} />
           </Routes>
         )}
       </main>
@@ -49,7 +56,7 @@ export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
 // ---------------------------------------------------------------------------
 // Paso 0: no hay proceso en curso → iniciar uno y ver las generaciones
 // ---------------------------------------------------------------------------
-function Bienvenida({ inicio }: { inicio: InicioProceso }) {
+function Bienvenida({ inicio, base }: { inicio: InicioProceso; base: string }) {
   const qc = useQueryClient();
   const avisar = useAviso();
   const [anio, setAnio] = useState(String(inicio.anioSugerido));
@@ -64,6 +71,7 @@ function Bienvenida({ inicio }: { inicio: InicioProceso }) {
 
   return (
     <div className="space-y-10">
+      {inicio.activo ? <ProcesoEnCurso activo={inicio.activo} /> : (
       <section className="tarjeta flex flex-wrap items-center justify-between gap-6 rounded-xl border-marca-200 p-7">
         <div className="min-w-0 flex-[999_1_480px] space-y-2.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-marca-700">Proceso {valido ? anio : ''}</p>
@@ -96,15 +104,50 @@ function Bienvenida({ inicio }: { inicio: InicioProceso }) {
           </div>
         </div>
       </section>
+      )}
 
       <section className="space-y-4">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Generaciones</h2>
           <p className="mt-1 text-sm text-gray-500">Procesos de años anteriores. Se pueden consultar, pero no modificar.</p>
         </div>
-        <ListaGeneraciones />
+        <ListaGeneraciones base={`${base}/generaciones`} />
       </section>
     </div>
+  );
+}
+
+/** Tarjeta del proceso en curso (en lugar del botón "Iniciar proceso"). */
+function ProcesoEnCurso({ activo }: { activo: NonNullable<InicioProceso['activo']> }) {
+  const navigate = useNavigate();
+  const { data: proceso } = useProceso();
+  const etapas = proceso?.etapas ?? [];
+  const actual = etapas.find((e) => e.estado === 'ACTIVA');
+  const terminadas = etapas.filter((e) => e.estado === 'CERRADA').length;
+  const color = { CERRADA: 'bg-green-600', ACTIVA: 'bg-yellow-400', PENDIENTE: 'bg-gray-200' };
+
+  return (
+    <section className="tarjeta flex flex-wrap items-center justify-between gap-6 rounded-xl border-yellow-300 p-7">
+      <div className="min-w-0 flex-[999_1_480px] space-y-2.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-yellow-700">Proceso {activo.anio} · en curso</p>
+        <h1 className="text-2xl font-bold text-gray-900">{activo.nombre}</h1>
+        {actual && (
+          <p className="text-sm text-gray-700">
+            Etapa {actual.orden} de {etapas.length}: <strong>{actual.nombre}</strong>
+            {terminadas > 0 && <span className="text-gray-500"> · {terminadas} {terminadas === 1 ? 'etapa terminada' : 'etapas terminadas'}</span>}
+          </p>
+        )}
+        {etapas.length > 0 && (
+          <div className="flex max-w-xl gap-1 pt-1" aria-hidden="true">
+            {etapas.map((e) => <span key={e.id} title={e.nombre} className={`h-2 flex-1 rounded-full ${color[e.estado]}`} />)}
+          </div>
+        )}
+        <p className="text-xs text-gray-500">Para iniciar el proceso del año siguiente, primero hay que cerrar este desde <em>Configurar etapas → Cerrar proceso</em>.</p>
+      </div>
+      <div className="flex flex-[1_1_220px] flex-col items-stretch gap-2 sm:max-w-[260px]">
+        <button className="btn-primario px-6 py-3 text-base" onClick={() => navigate('/')}>Continuar con el proceso</button>
+      </div>
+    </section>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Etapa, Proceso } from './api';
 import { useSesion } from './sesion';
@@ -144,10 +144,11 @@ export function Layout() {
           de etapas quedan quietos (y lo "sticky" de las páginas funciona). */}
       <div className="flex h-screen overflow-hidden">
         <aside className="flex w-56 flex-shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-gray-50">
-          <div className="border-b border-gray-200 px-4 py-4">
-            <div className="text-sm font-bold tracking-tight text-gray-900">Beca Carmen Goudie</div>
+          <Link to="/inicio" title="Ir a la pantalla de inicio (procesos y generaciones)"
+            className="group block border-b border-gray-200 px-4 py-4 hover:bg-gray-100">
+            <div className="text-sm font-bold tracking-tight text-gray-900 group-hover:underline">Beca Carmen Goudie</div>
             <div className="mt-0.5 text-xs text-gray-500">{proceso?.nombre ?? 'Sistema de gestión'}</div>
-          </div>
+          </Link>
           <nav className="flex-1 p-2">
             <NavLink to="/" end className={enlace}>Inicio</NavLink>
             {vista && (

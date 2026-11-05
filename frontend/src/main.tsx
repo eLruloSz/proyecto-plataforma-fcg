@@ -35,6 +35,8 @@ function Rutas() {
   if (!inicio.data.activo) return <PantallaInicio inicio={inicio.data} />;
   return (
     <Routes>
+      {/* Pantalla de inicio (sin el menú), a la que se llega desde "Beca Carmen Goudie". */}
+      <Route path="inicio/*" element={<PantallaInicio inicio={inicio.data} />} />
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="liceos" element={<Liceos />} />
