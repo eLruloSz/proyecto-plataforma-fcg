@@ -165,7 +165,7 @@ const TIPOS_FILTRO: TipoFiltroEtapa[] = ['EN_ETAPA', 'FALTAN_REQUISITOS', 'PASA'
 /** Plantilla sugerida para cada caso (si existe). */
 function plantillaSugerida(plantillas: Plantilla[], proposito: string | null, tipo: TipoFiltroEtapa | undefined) {
   if (tipo === 'PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /avanza|pasa/i.test(p.nombre));
-  if (tipo === 'NO_PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /no contin|no pasa/i.test(p.nombre));
+  if (tipo === 'NO_PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /no contin|no avanza|no pasa/i.test(p.nombre));
   if (tipo === 'FALTAN_REQUISITOS') return plantillas.find((p) => /documentos pendientes/i.test(p.nombre));
   if (proposito) return plantillas.find((p) => p.proposito === proposito);
   return undefined;

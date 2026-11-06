@@ -32,7 +32,7 @@ docker compose --profile app down -v && docker compose --profile app up -d --bui
 que le falten. Todas se pueden aplicar más de una vez sin problema.
 
 ```bash
-docker exec -i becas-db psql -U becas -d becas < db/09_calendario_entrevistas.sql
+docker exec -i becas-db psql -U becas -d becas < db/10_hitos_por_etapa.sql
 ```
 
 | Migración | Qué agrega |
@@ -43,9 +43,10 @@ docker exec -i becas-db psql -U becas -d becas < db/09_calendario_entrevistas.sq
 | `04_etapa_encuentro.sql` | Encuentro online ligado a la etapa 2 |
 | `05_fase3_entrevistas.sql` | Entrevistas |
 | `06_inicio_proceso.sql` | Inicio del proceso y revisión de liceos |
-| `07_generaciones.sql` | Histórico de generaciones |
+| `07_generaciones.sql` | Histórico de concursos anteriores |
 | `08_preseleccion.sql` | Ficha RSH, ranking y hito "Aviso de resultados" |
 | `09_calendario_entrevistas.sql` | Calendario de entrevistas |
+| `10_hitos_por_etapa.sql` | Etapa a la que pertenece cada hito del seguimiento por liceo |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 

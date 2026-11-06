@@ -199,12 +199,21 @@ export class ImportarContactosService {
 
     await this.ds.transaction(async (em) => {
       for (const x of listos) {
-        const cols = Object.keys(x!.datos);
-        if (!cols.length) continue;
+        const d = x!.datos;
+        if (!Object.keys(d).length) continue;
+        // Consulta fija: cada columna se actualiza solo si viene en el cambio
+        // ($2/$4/$6 = true). Nada del request se concatena al SQL.
         try {
           await em.query(
-            `UPDATE personas SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`,
-            [x!.persona_id, ...cols.map((c) => x!.datos[c])]);
+            `UPDATE personas SET
+               email    = CASE WHEN $2::boolean THEN $3 ELSE email    END,
+               telefono = CASE WHEN $4::boolean THEN $5 ELSE telefono END,
+               rut      = CASE WHEN $6::boolean THEN $7 ELSE rut      END
+             WHERE id = $1`,
+            [x!.persona_id,
+              'email' in d, d.email ?? null,
+              'telefono' in d, d.telefono ?? null,
+              'rut' in d, d.rut ?? null]);
         } catch (e: any) {
           if (e.code === '23505') throw new ConflictException('Uno de los RUT ya está registrado en otra persona.');
           throw e;

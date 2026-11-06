@@ -25,12 +25,12 @@ export function PantallaInicio({ inicio }: { inicio: InicioProceso }) {
   // Con proceso activo esta pantalla vive bajo /inicio; sin proceso, en la raíz.
   const base = inicio.activo ? '/inicio' : '';
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white">
+    <div className="min-h-screen">
+      <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <div>
-            <div className="text-sm font-bold tracking-tight text-gray-900">Beca Carmen Goudie</div>
-            <div className="text-xs text-gray-500">Sistema de gestión</div>
+          <div className="flex items-center gap-3">
+            <img src="/logo-fcg.png" alt="Fundación Carmen Goudie" className="h-12 w-auto" />
+            <div className="border-l border-gray-200 pl-3 text-xs text-gray-500">Sistema de gestión</div>
           </div>
           {inicio.activo && (
             <Link to="/" className="btn-secundario btn-chico ml-auto mr-6">Ir al {inicio.activo.nombre} →</Link>
@@ -80,7 +80,7 @@ function Bienvenida({ inicio, base }: { inicio: InicioProceso; base: string }) {
             <label className="flex max-w-xl cursor-pointer items-start gap-2.5 pt-1 text-sm text-gray-800">
               <input type="checkbox" className="mt-0.5 h-4 w-4 flex-shrink-0 accent-marca-700" checked={usarBase} onChange={(e) => setUsarBase(e.target.checked)} />
               <span>
-                Usar la generación {inicio.ultimo.anio} como base: sus etapas (con cupos y requisitos) y los mismos liceos participantes.
+                Usar el concurso {inicio.ultimo.anio} como base: sus etapas (con cupos y requisitos) y los mismos liceos participantes.
                 <span className="block text-xs text-gray-500">Las plantillas de correo y los contactos de los liceos se mantienen siempre.</span>
               </span>
             </label>
@@ -108,7 +108,7 @@ function Bienvenida({ inicio, base }: { inicio: InicioProceso; base: string }) {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Generaciones</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Concursos anteriores</h2>
           <p className="mt-1 text-sm text-gray-500">Procesos de años anteriores. Se pueden consultar, pero no modificar.</p>
         </div>
         <ListaGeneraciones base={`${base}/generaciones`} />

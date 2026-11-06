@@ -210,9 +210,15 @@ export interface Dashboard {
   rebotados: number;
 }
 export interface GrillaHitos {
-  catalogo: { codigo: string; nombre: string; orden: number }[];
+  catalogo: { codigo: string; nombre: string; orden: number; tipos_etapa?: string[] }[];
   filas: { id: string; codigo: string; nombre: string; comuna: string | null; contraparte: string | null; contraparte_cargo: string | null; participacion: Participacion;
     hitos: Record<string, { completado: boolean; automatico: boolean; fecha: string | null; observaciones: string | null }> }[];
+}
+
+/** Cuadro compacto del Inicio: hitos de la etapa (todos = la etapa no tiene hitos propios). */
+export interface HitosEtapa extends GrillaHitos {
+  etapa: { id: string; nombre: string; tipo: string };
+  todos: boolean;
 }
 
 export interface VistaAvance {

@@ -5,6 +5,7 @@ import { api, Dashboard as D, GRUPOS, TareasEtapa } from '../api';
 import { useEtapa } from '../etapa';
 import { Caja, Cargando, ErrorCarga, EtiquetaParticipacion, fecha, Vacio } from '../ui';
 import { TerminarEtapa } from './TerminarEtapa';
+import { SeguimientoInicio } from './SeguimientoCompacto';
 
 function Cifra({ valor, texto, detalle, tono }: { valor: number; texto: string; detalle?: string; tono?: string }) {
   return (
@@ -16,47 +17,58 @@ function Cifra({ valor, texto, detalle, tono }: { valor: number; texto: string; 
   );
 }
 
-/** Checklist de lo que hay que hacer en la etapa, con el botón para ir a hacerlo. */
+/**
+ * Checklist de lo que hay que hacer en la etapa, en formato compacto: va en
+ * una columna angosta a la derecha (arriba en pantallas chicas). Cada fila
+ * lleva directo a donde se hace la tarea.
+ */
 function Tareas({ t, consultando, onTerminar }: { t: TareasEtapa; consultando: boolean; onTerminar: () => void }) {
   const hechas = t.tareas.filter((x) => x.hecha).length;
   return (
     <section className="tarjeta overflow-hidden" aria-label="Tareas de la etapa">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-3">
-        <div>
+      <div className="px-4 pb-3 pt-3.5">
+        <div className="flex items-baseline justify-between gap-2">
           <h2 className="subtitulo">{consultando ? 'Tareas de esta etapa' : 'Qué hacer ahora'}</h2>
-          <p className="text-xs text-gray-500">{hechas} de {t.tareas.length} hechas</p>
+          <span className="text-xs tabular-nums text-gray-500">{hechas}/{t.tareas.length}</span>
         </div>
-        <div className="h-2 w-40 overflow-hidden rounded-full bg-gray-100" role="progressbar" aria-valuenow={hechas} aria-valuemax={t.tareas.length}>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100" role="progressbar" aria-valuenow={hechas} aria-valuemax={t.tareas.length}>
           <div className="h-full rounded-full bg-green-600 transition-all" style={{ width: `${(hechas / Math.max(1, t.tareas.length)) * 100}%` }} />
         </div>
       </div>
-      <ol className="divide-y divide-gray-100">
-        {t.tareas.map((x, i) => (
-          <li key={x.clave} className={`flex items-center gap-3 px-5 py-3 ${x.hecha ? 'bg-gray-50/60' : ''}`}>
-            <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ${x.hecha ? 'bg-green-600 text-white' : 'border-2 border-gray-300 text-gray-500'}`}>
-              {x.hecha ? '✓' : i + 1}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className={`text-sm ${x.hecha ? 'text-gray-500' : 'font-medium text-gray-900'}`}>{x.titulo}</div>
-              <div className="text-xs text-gray-500">{x.detalle}</div>
-            </div>
-            {x.accion && (
-              <Link to={x.accion.ruta} className={x.hecha ? 'text-xs text-gray-500 underline hover:text-gray-900' : 'btn-secundario btn-chico'}>
-                {x.accion.texto}
-              </Link>
-            )}
-          </li>
-        ))}
+      <ol className="border-t border-gray-100">
+        {t.tareas.map((x, i) => {
+          const contenido = (
+            <>
+              <span className={`mt-px flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${x.hecha ? 'bg-green-600 text-white' : 'border-[1.5px] border-gray-300 text-gray-500'}`}>
+                {x.hecha ? '✓' : i + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className={`block text-sm leading-snug ${x.hecha ? 'text-gray-400 line-through decoration-gray-300' : 'text-gray-900'}`}>{x.titulo}</span>
+                {!x.hecha && <span className="block text-xs text-gray-500">{x.detalle}</span>}
+              </span>
+              {x.accion && <span className="mt-px text-sm text-gray-300 transition-colors group-hover:text-marca-700" aria-hidden="true">→</span>}
+            </>
+          );
+          const clase = 'group flex items-start gap-2.5 px-4 py-2';
+          return (
+            <li key={x.clave}>
+              {x.accion
+                ? <Link to={x.accion.ruta} title={x.accion.texto} className={`${clase} hover:bg-gray-50`}>{contenido}</Link>
+                : <div className={clase}>{contenido}</div>}
+            </li>
+          );
+        })}
       </ol>
       {!consultando && (
-        <div className={`flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 ${t.lista ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
-          <span className={`text-sm ${t.lista ? 'font-medium text-green-800' : 'text-gray-600'}`}>
+        <div className={`space-y-2 border-t px-4 py-3 ${t.lista ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-gray-50/60'}`}>
+          <p className={`text-xs ${t.lista ? 'font-medium text-green-800' : 'text-gray-500'}`}>
             {t.lista
-              ? (t.siguiente ? `Todo listo: puedes pasar a la etapa ${t.siguiente.orden}, ${t.siguiente.nombre}.` : 'Todo listo: es la última etapa.')
-              : 'Cuando termines estas tareas, pasa a la etapa siguiente.'}
-          </span>
-          <button className={t.lista ? 'btn-primario' : 'btn-secundario btn-chico'} onClick={onTerminar}>
-            {t.siguiente ? `Terminar etapa y pasar a ${t.siguiente.nombre}` : 'Terminar la última etapa'}
+              ? (t.siguiente ? 'Todo listo para avanzar a la etapa siguiente.' : 'Todo listo: es la última etapa.')
+              : 'Cuando termines estas tareas, avanza a la etapa siguiente.'}
+          </p>
+          <button className={`w-full ${t.lista ? 'btn-primario' : 'btn-secundario btn-chico'}`} onClick={onTerminar}
+            title={t.siguiente ? `Terminar etapa y pasar a ${t.siguiente.nombre}` : undefined}>
+            {t.siguiente ? `Pasar a ${t.siguiente.nombre}` : 'Terminar la última etapa'}
           </button>
         </div>
       )}
@@ -200,7 +212,7 @@ export function Dashboard() {
   const r = t.resumen;
 
   return (
-    <div className="max-w-5xl space-y-8">
+    <div className="max-w-7xl space-y-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
           {data.proceso.nombre} · Etapa {t.etapa.orden} de {t.total_etapas}{consultando ? ' (consulta)' : ''}
@@ -209,31 +221,40 @@ export function Dashboard() {
         {t.etapa.descripcion && <p className="text-sm text-gray-500">{t.etapa.descripcion}</p>}
       </div>
 
-      {data.rebotados > 0 && (
-        <Caja tono="rojo">
-          <strong>{data.rebotados} correo{data.rebotados > 1 ? 's no llegaron' : ' no llegó'}</strong> (rebotados o con error).{' '}
-          <Link to="/comunicacion" className="underline">Revisar en Comunicación</Link>
-        </Caja>
-      )}
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
+        {/* Primero en el código para que en pantallas angostas quede arriba. */}
+        <aside className="xl:sticky xl:top-0 xl:col-start-2 xl:row-start-1">
+          <Tareas t={t} consultando={consultando} onTerminar={() => setTerminando(true)} />
+        </aside>
 
-      <Tareas t={t} consultando={consultando} onTerminar={() => setTerminando(true)} />
+        <div className="min-w-0 space-y-8 xl:col-start-1 xl:row-start-1">
+          {data.rebotados > 0 && (
+            <Caja tono="rojo">
+              <strong>{data.rebotados} correo{data.rebotados > 1 ? 's no llegaron' : ' no llegó'}</strong> (rebotados o con error).{' '}
+              <Link to="/comunicacion" className="underline">Revisar en Comunicación</Link>
+            </Caja>
+          )}
 
-      {t.etapa.tipo === 'INVITACION' ? <DatosInvitacion data={data} /> : (
-        <>
-          <section>
-            <h2 className="subtitulo mb-3">Estudiantes en esta etapa</h2>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Cifra valor={r.en_etapa} texto="Esperan una decisión" />
-              <Cifra valor={r.pendientes_de_decidir} texto="Sin decidir" tono={r.pendientes_de_decidir ? 'text-yellow-600' : undefined} />
-              <Cifra valor={r.marcados_pasa + r.confirmados_pasa} texto={t.siguiente ? 'Avanzan' : 'Becarios'} tono="text-green-700"
-                detalle={t.etapa.cupo ? `cupo ${t.etapa.cupo}` : undefined} />
-              <Cifra valor={r.confirmados_no_pasa + r.marcados_no_pasa} texto="No avanzan" />
-            </div>
-          </section>
-          <AvanceProceso data={data} />
-          <CorreosPendientes data={data} />
-        </>
-      )}
+          <SeguimientoInicio etapaId={t.etapa.id} />
+
+          {t.etapa.tipo === 'INVITACION' ? <DatosInvitacion data={data} /> : (
+            <>
+              <section>
+                <h2 className="subtitulo mb-3">Estudiantes en esta etapa</h2>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <Cifra valor={r.en_etapa} texto="Esperan una decisión" />
+                  <Cifra valor={r.pendientes_de_decidir} texto="Sin decidir" tono={r.pendientes_de_decidir ? 'text-yellow-600' : undefined} />
+                  <Cifra valor={r.marcados_pasa + r.confirmados_pasa} texto={t.siguiente ? 'Avanzan' : 'Becarios'} tono="text-green-700"
+                    detalle={t.etapa.cupo ? `cupo ${t.etapa.cupo}` : undefined} />
+                  <Cifra valor={r.confirmados_no_pasa + r.marcados_no_pasa} texto="No avanzan" />
+                </div>
+              </section>
+              <AvanceProceso data={data} />
+              <CorreosPendientes data={data} />
+            </>
+          )}
+        </div>
+      </div>
 
       {terminando && <TerminarEtapa etapaId={t.etapa.id} onCerrar={() => setTerminando(false)} />}
     </div>

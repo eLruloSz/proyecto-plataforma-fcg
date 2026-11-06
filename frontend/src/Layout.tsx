@@ -143,11 +143,11 @@ export function Layout() {
       {/* Alto fijo de pantalla: solo se desplaza el contenido; el menú y la barra
           de etapas quedan quietos (y lo "sticky" de las páginas funciona). */}
       <div className="flex h-screen overflow-hidden">
-        <aside className="flex w-56 flex-shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-gray-50">
-          <Link to="/inicio" title="Ir a la pantalla de inicio (procesos y generaciones)"
-            className="group block border-b border-gray-200 px-4 py-4 hover:bg-gray-100">
-            <div className="text-sm font-bold tracking-tight text-gray-900 group-hover:underline">Beca Carmen Goudie</div>
-            <div className="mt-0.5 text-xs text-gray-500">{proceso?.nombre ?? 'Sistema de gestión'}</div>
+        <aside className="flex w-56 flex-shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-gray-50/70 backdrop-blur-sm">
+          <Link to="/inicio" title="Ir a la pantalla de inicio (concurso en curso y concursos anteriores)"
+            className="group block border-b border-gray-200 px-4 py-3 hover:bg-white/70">
+            <img src="/logo-fcg.png" alt="Fundación Carmen Goudie" className="w-36 transition-opacity group-hover:opacity-80" />
+            <div className="mt-1 text-xs text-gray-500">{proceso?.nombre ?? 'Sistema de gestión'}</div>
           </Link>
           <nav className="flex-1 p-2">
             <NavLink to="/" end className={enlace}>Inicio</NavLink>
@@ -168,7 +168,7 @@ export function Layout() {
           </nav>
           <div className="px-2 pb-2">
             <NavLink to="/generaciones" className={({ isActive }) => `block rounded-md px-3 py-1.5 text-xs ${isActive ? 'font-semibold text-gray-900' : 'text-gray-500 hover:bg-gray-100'}`}>
-              Generaciones anteriores
+              Concursos anteriores
             </NavLink>
           </div>
           <div className="border-t border-gray-200 p-3 text-xs">
@@ -178,7 +178,7 @@ export function Layout() {
           </div>
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="border-b border-gray-200 bg-white px-6 py-3"><BarraEtapas /></div>
+          <div className="border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur-sm"><BarraEtapas /></div>
           <AvisoConsulta />
           <div className="min-h-0 flex-1 overflow-y-auto p-6"><Outlet /></div>
         </main>

@@ -19,10 +19,11 @@ export function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+    <div className="flex min-h-screen items-center justify-center p-4">
       <form onSubmit={enviar} className="tarjeta w-full max-w-sm p-6 shadow-sm" noValidate>
-        <h1 className="text-base font-bold text-gray-900">Beca Carmen Goudie</h1>
-        <p className="mb-5 text-sm text-gray-500">Sistema de gestión de postulaciones</p>
+        <img src="/logo-fcg.png" alt="Fundación Carmen Goudie" className="mx-auto mb-3 w-64" />
+        <h1 className="sr-only">Beca Carmen Goudie</h1>
+        <p className="mb-5 text-center text-sm text-gray-500">Sistema de gestión de postulaciones</p>
         <label className="label" htmlFor="email">Correo</label>
         <input id="email" type="email" autoComplete="username" className="input mb-3" value={email}
           onChange={(e) => { setEmail(e.target.value); setError(''); }} autoFocus />

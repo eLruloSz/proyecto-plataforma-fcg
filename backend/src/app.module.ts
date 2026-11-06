@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -18,6 +19,18 @@ import { PreseleccionModule } from './preseleccion/preseleccion.module';
 import { EntrevistasModule } from './entrevistas/entrevistas.module';
 import { GeneracionesModule } from './generaciones/generaciones.module';
 
+/**
+ * TLS hacia PostgreSQL. Se valida siempre el certificado del servidor
+ * (rejectUnauthorized: true) para evitar ataques de intermediario.
+ * Si el proveedor usa una CA propia (ej. Supabase), se indica la ruta del
+ * certificado en DATABASE_SSL_CA.
+ */
+function opcionesSsl(cfg: ConfigService) {
+  if (cfg.get('DATABASE_SSL') !== 'true') return false;
+  const caPath = cfg.get<string>('DATABASE_SSL_CA');
+  return { rejectUnauthorized: true, ...(caPath ? { ca: readFileSync(caPath, 'utf8') } : {}) };
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -27,7 +40,7 @@ import { GeneracionesModule } from './generaciones/generaciones.module';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.getOrThrow<string>('DATABASE_URL'),
-        ssl: cfg.get('DATABASE_SSL') === 'true' ? { rejectUnauthorized: false } : false,
+        ssl: opcionesSsl(cfg),
         synchronize: false,
         entities: [],
       }),

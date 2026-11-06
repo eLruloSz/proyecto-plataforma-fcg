@@ -188,7 +188,7 @@ export class PreseleccionService {
     const procesoId = await this.proceso.id();
     const [e] = await this.ds.query(`SELECT 1 FROM etapas WHERE id = $1 AND proceso_id = $2`, [etapaId, procesoId]);
     if (!e) throw new NotFoundException('Etapa no encontrada.');
-    if (criterio === 'primeros' && !(n && n > 0)) throw new BadRequestException('Indica cuántos pasan.');
+    if (criterio === 'primeros' && !(n && n > 0)) throw new BadRequestException('Indica cuántos avanzan.');
     const { carga } = await this.estado();
     if (!carga) throw new ConflictException('Primero sube el Excel del ranking.');
 

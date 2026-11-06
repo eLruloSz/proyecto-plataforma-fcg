@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, EtapaResumen, Generacion, GeneracionHistoricaDatos, GRUPOS, PROPOSITOS, ResumenGeneracion } from '../api';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, useAviso, Vacio } from '../ui';
+import { IndicadorSeguimiento, SeguimientoConcurso } from './SeguimientoCompacto';
 
 // Histórico de generaciones: un año = un proceso. Los cerrados se muestran
 // desde la foto guardada al cerrarlos (solo lectura); el que está en curso,
@@ -62,7 +63,7 @@ export function ListaGeneraciones({ base = '/generaciones' }: { base?: string })
         <button onClick={() => setAgregando(true)}
           className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 p-6 text-center text-gray-600 transition-colors hover:border-marca-600 hover:bg-marca-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marca-600">
           <span className="text-3xl leading-none text-marca-700" aria-hidden="true">+</span>
-          <span className="font-semibold text-gray-900">Agregar generación anterior</span>
+          <span className="font-semibold text-gray-900">Agregar concurso anterior</span>
           <span className="max-w-[260px] text-sm">Para años antes del sistema: los números del embudo y la lista de becarios, ingresados a mano.</span>
         </button>
       </div>
@@ -102,7 +103,7 @@ function TarjetaGeneracion({ g, a }: { g: Generacion; a: string }) {
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
         <span className="text-sm text-gray-500">{num(r?.liceos.convocados)} liceos convocados</span>
         <Link to={a} className="py-1 text-sm font-semibold text-marca-700 hover:text-marca-800 hover:underline">
-          {g.historico ? 'Ver resumen' : 'Ver generación'} →
+          {g.historico ? 'Ver resumen' : 'Ver concurso'} →
         </Link>
       </div>
     </article>
@@ -114,7 +115,7 @@ export function PaginaGeneraciones() {
   return (
     <div className="max-w-6xl space-y-5">
       <div>
-        <h1 className="titulo">Generaciones</h1>
+        <h1 className="titulo">Concursos anteriores</h1>
         <p className="mt-1 text-sm text-gray-500">Procesos de cada año. Los cerrados se pueden consultar, pero no modificar.</p>
       </div>
       <ListaGeneraciones />
@@ -125,7 +126,7 @@ export function PaginaGeneraciones() {
 // ---------------------------------------------------------------------------
 // Detalle
 // ---------------------------------------------------------------------------
-type Pestana = 'resumen' | 'becarios' | 'liceos' | 'correos';
+type Pestana = 'resumen' | 'becarios' | 'liceos' | 'seguimiento' | 'correos';
 
 export function DetalleGeneracion({ volver = '/generaciones' }: { volver?: string }) {
   const { anio } = useParams();
@@ -146,6 +147,7 @@ export function DetalleGeneracion({ volver = '/generaciones' }: { volver?: strin
     { id: 'becarios', texto: `Becarios (${r?.lista_becarios?.length ?? 0})` },
     ...(!g.historico ? [
       { id: 'liceos' as const, texto: `Liceos (${r?.por_liceo?.length ?? 0})` },
+      { id: 'seguimiento' as const, texto: 'Seguimiento' },
       { id: 'correos' as const, texto: `Correos (${r?.material?.envios.length ?? 0})` },
     ] : []),
   ];
@@ -157,7 +159,7 @@ export function DetalleGeneracion({ volver = '/generaciones' }: { volver?: strin
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-900">Generación {g.anio}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Concurso {g.anio}</h1>
             <EtiquetaGeneracion g={g} />
           </div>
           <p className="text-sm text-gray-500">
@@ -181,9 +183,9 @@ export function DetalleGeneracion({ volver = '/generaciones' }: { volver?: strin
         )}
       </div>
 
-      {!r ? <Caja tono="amarillo">Esta generación no tiene datos guardados.</Caja> : (
+      {!r ? <Caja tono="amarillo">Este concurso no tiene datos guardados.</Caja> : (
         <>
-          <nav aria-label="Secciones de la generación" className="flex flex-wrap gap-1 border-b border-gray-200">
+          <nav aria-label="Secciones del concurso" className="flex flex-wrap gap-1 border-b border-gray-200">
             {pestanas.map((p) => (
               <button key={p.id} onClick={() => setPestana(p.id)} aria-current={pestana === p.id ? 'page' : undefined}
                 className={`-mb-px border-b-2 px-4 py-2.5 text-sm transition-colors ${pestana === p.id ? 'border-marca-700 font-semibold text-marca-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}>
@@ -194,6 +196,7 @@ export function DetalleGeneracion({ volver = '/generaciones' }: { volver?: strin
           {pestana === 'resumen' && <Resumen g={g} r={r} irA={setPestana} />}
           {pestana === 'becarios' && <Becarios r={r} />}
           {pestana === 'liceos' && <PorLiceo r={r} />}
+          {pestana === 'seguimiento' && <SeguimientoConcurso anio={g.anio} />}
           {pestana === 'correos' && <Correos r={r} />}
         </>
       )}
@@ -205,7 +208,7 @@ export function DetalleGeneracion({ volver = '/generaciones' }: { volver?: strin
 }
 
 function VolverA({ a }: { a: string }) {
-  return <Link to={a} className="inline-block py-1 text-sm font-semibold text-marca-700 hover:underline">← Generaciones</Link>;
+  return <Link to={a} className="inline-block py-1 text-sm font-semibold text-marca-700 hover:underline">← Concursos anteriores</Link>;
 }
 
 function Resumen({ g, r, irA }: { g: Generacion; r: ResumenGeneracion; irA: (p: Pestana) => void }) {
@@ -249,6 +252,8 @@ function Resumen({ g, r, irA }: { g: Generacion; r: ResumenGeneracion; irA: (p: 
         </section>
       </div>
 
+      {!g.historico && <IndicadorSeguimiento anio={g.anio} onVerTodo={() => irA('seguimiento')} />}
+
       {g.observaciones && <Caja tono="azul" titulo="Observaciones"><p className="whitespace-pre-line">{g.observaciones}</p></Caja>}
 
       {m && (
@@ -289,7 +294,7 @@ function Embudo({ r }: { r: ResumenGeneracion }) {
               <span className="text-right font-bold tabular-nums">{num(f.valor)}</span>
             </div>
             {paso !== null && (
-              <div className="mt-1 text-xs text-gray-500 sm:pl-[192px]">{paso}% {sig.final ? 'quedó seleccionado' : `pasó a ${sig.texto}`}</div>
+              <div className="mt-1 text-xs text-gray-500 sm:pl-[192px]">{paso}% {sig.final ? 'quedó seleccionado' : `avanzó a ${sig.texto}`}</div>
             )}
           </li>
         );
@@ -439,7 +444,7 @@ function FormHistorica({ g, base, onCerrar }: { g?: Generacion; base: string; on
       qc.invalidateQueries({ queryKey: ['inicio'] });
       qc.setQueryData(['generacion', nueva.anio], nueva);
       if (g && g.anio !== nueva.anio) qc.removeQueries({ queryKey: ['generacion', g.anio] });
-      avisar(g ? `Generación ${nueva.anio} corregida` : `Generación ${nueva.anio} agregada`);
+      avisar(g ? `Concurso ${nueva.anio} corregido` : `Concurso ${nueva.anio} agregado`);
       onCerrar();
       if (!g || g.anio !== nueva.anio) navigate(`${base}/${nueva.anio}`);
     },
@@ -447,7 +452,7 @@ function FormHistorica({ g, base, onCerrar }: { g?: Generacion; base: string; on
   });
 
   return (
-    <Modal titulo={g ? `Corregir generación ${g.anio}` : 'Agregar generación anterior'} onCerrar={onCerrar} ancho="max-w-2xl"
+    <Modal titulo={g ? `Corregir concurso ${g.anio}` : 'Agregar concurso anterior'} onCerrar={onCerrar} ancho="max-w-2xl"
       pie={<>
         <button className="btn-secundario" onClick={onCerrar}>Cancelar</button>
         <button className="btn-primario" disabled={!anioValido || !numerosValidos || !etapasValidas || guardar.isPending} onClick={() => guardar.mutate()}>
@@ -518,13 +523,13 @@ function EliminarHistorica({ anio, volver, onCerrar }: { anio: number; volver: s
       qc.invalidateQueries({ queryKey: ['generaciones'] });
       qc.invalidateQueries({ queryKey: ['inicio'] });
       qc.removeQueries({ queryKey: ['generacion', anio] });
-      avisar(`Generación ${anio} eliminada`);
+      avisar(`Concurso ${anio} eliminado`);
       navigate(volver);
     },
     onError: (e: Error) => avisar(e.message, 'error'),
   });
   return (
-    <Modal titulo={`Eliminar generación ${anio}`} onCerrar={onCerrar} ancho="max-w-md"
+    <Modal titulo={`Eliminar concurso ${anio}`} onCerrar={onCerrar} ancho="max-w-md"
       pie={<>
         <button className="btn-secundario" onClick={onCerrar}>Cancelar</button>
         <button className="btn-peligro" disabled={eliminar.isPending} onClick={() => eliminar.mutate()}>Eliminar</button>

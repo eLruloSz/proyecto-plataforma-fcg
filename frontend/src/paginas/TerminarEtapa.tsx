@@ -42,7 +42,7 @@ export function TerminarEtapa({ etapaId, onCerrar, mensaje }: { etapaId: string;
         pie={<button className="btn-secundario" onClick={onCerrar}>Entendido</button>}>
         <p className="text-sm text-gray-700">
           Es la última etapa. Cuando esté todo listo, cierra el proceso {''}desde <em>Configurar etapas → Cerrar proceso</em>:
-          los datos quedan guardados en Generaciones.
+          los datos quedan guardados en Concursos anteriores.
         </p>
       </Modal>
     );

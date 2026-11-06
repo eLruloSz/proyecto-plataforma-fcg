@@ -37,7 +37,12 @@ def nota(rnd):
 
 
 def main(plantilla, salida):
-    salida = Path(salida)
+    # Solo se permite escribir dentro de la carpeta actual (evita rutas como
+    # ../../ o absolutas que terminen sobrescribiendo archivos ajenos).
+    base = Path.cwd().resolve()
+    salida = (base / salida).resolve()
+    if not salida.is_relative_to(base):
+        sys.exit(f"La carpeta de salida debe estar dentro de {base}")
     salida.mkdir(parents=True, exist_ok=True)
     rnd = random.Random(2026)
     for codigo, liceo, cursos in LICEOS_DEMO:

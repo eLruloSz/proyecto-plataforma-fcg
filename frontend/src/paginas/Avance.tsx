@@ -136,7 +136,7 @@ export function Avance() {
   const confirmar = useMutation({
     mutationFn: () => api.post<{ pasan: number; noPasan: number; siguiente: { nombre: string } | null }>(`/avance/${etapaId}/confirmar`, {}),
     onSuccess: (r) => {
-      avisar(`Confirmado: ${r.pasan} pasan${r.siguiente ? ` a ${r.siguiente.nombre}` : ''}, ${r.noPasan} no pasan`);
+      avisar(`Confirmado: ${r.pasan} avanzan${r.siguiente ? ` a ${r.siguiente.nombre}` : ''}, ${r.noPasan} no avanzan`);
       setConfirmando(false); refrescar();
       // Si ya nadie queda por decidir en la etapa en curso, se ofrece pasar a la siguiente (avanza la barra de arriba).
       if (v && v.etapa.id === actual?.id && v.resumen.pendientes_de_decidir === 0) {
@@ -214,12 +214,12 @@ export function Avance() {
       {/* Resumen */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="tarjeta p-3"><div className="text-xl font-bold">{r.pendientes_de_decidir}</div><div className="text-xs text-gray-500">sin decidir</div></div>
-        <div className="tarjeta p-3"><div className="text-xl font-bold text-green-700">{r.marcados_pasa}</div><div className="text-xs text-gray-500">marcados “pasa”</div></div>
-        <div className="tarjeta p-3"><div className="text-xl font-bold text-red-700">{r.marcados_no_pasa}</div><div className="text-xs text-gray-500">marcados “no pasa”</div></div>
+        <div className="tarjeta p-3"><div className="text-xl font-bold text-green-700">{r.marcados_pasa}</div><div className="text-xs text-gray-500">marcados “avanza”</div></div>
+        <div className="tarjeta p-3"><div className="text-xl font-bold text-red-700">{r.marcados_no_pasa}</div><div className="text-xs text-gray-500">marcados “no avanza”</div></div>
         <div className="tarjeta p-3"><div className="text-xl font-bold">{r.confirmados_pasa + r.confirmados_no_pasa}</div><div className="text-xs text-gray-500">ya confirmados</div></div>
         <div className="tarjeta p-3">
           <div className={`text-xl font-bold ${e.cupo && totalPasan > e.cupo ? 'text-red-700' : ''}`}>{totalPasan}{e.cupo ? <span className="text-sm font-normal text-gray-400"> / {e.cupo}</span> : ''}</div>
-          <div className="text-xs text-gray-500">{e.cupo ? 'pasan / cupo' : 'pasan (sin cupo)'}</div>
+          <div className="text-xs text-gray-500">{e.cupo ? 'avanzan / cupo' : 'avanzan (sin cupo)'}</div>
         </div>
       </div>
 
@@ -229,7 +229,7 @@ export function Avance() {
       <div className="tarjeta flex flex-wrap items-center gap-2 bg-gray-50 px-4 py-3">
         {primera && (
           <button className="btn-secundario" disabled={sugerir.isPending} onClick={() => sugerir.mutate()}
-            title="Aceptó la invitación → pasa · Rechazó → no pasa">Marcar según respuesta a la invitación</button>
+            title="Aceptó la invitación → avanza · Rechazó → no avanza">Marcar según respuesta a la invitación</button>
         )}
         {esPre && (
           <>
@@ -271,8 +271,8 @@ export function Avance() {
           <option value="todos">Todos</option>
           <option value="sin-decidir">Sin decidir</option>
           {requisitos.length > 0 && <option value="faltan">Les falta algún requisito</option>}
-          <option value="pasa">Marcados “pasa”</option>
-          <option value="no-pasa">Marcados “no pasa”</option>
+          <option value="pasa">Marcados “avanza”</option>
+          <option value="no-pasa">Marcados “no avanza”</option>
           <option value="confirmados">Ya confirmados</option>
         </select>
         </div>
@@ -358,7 +358,7 @@ export function Avance() {
                   <td>
                     {f.confirmado ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        {f.resultado === 'PASA' ? <Etiqueta tono="verde">Pasó ✓</Etiqueta> : <Etiqueta tono="rojo">No pasó</Etiqueta>}
+                        {f.resultado === 'PASA' ? <Etiqueta tono="verde">Avanzó ✓</Etiqueta> : <Etiqueta tono="rojo">No avanzó</Etiqueta>}
                         {f.avisado_en ? <span className="text-[11px] text-gray-400" title={fecha(f.avisado_en)}>avisado</span> : <span className="text-[11px] text-yellow-700">sin avisar</span>}
                         <button className="text-[11px] text-gray-400 underline hover:text-gray-800" onClick={() => setDeshaciendo(f)}>deshacer</button>
                       </div>
@@ -369,7 +369,7 @@ export function Avance() {
                           aria-pressed={f.resultado === 'PASA'}>Avanza</button>
                         <button onClick={() => marcar.mutate({ f, resultado: f.resultado === 'NO_PASA' ? null : 'NO_PASA' })}
                           className={`btn btn-chico -ml-px rounded-l-none border ${f.resultado === 'NO_PASA' ? 'border-red-600 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`}
-                          aria-pressed={f.resultado === 'NO_PASA'}>No Avanza</button>
+                          aria-pressed={f.resultado === 'NO_PASA'}>No avanza</button>
                       </div>
                     )}
                   </td>
@@ -392,12 +392,12 @@ export function Avance() {
             <p className="text-gray-600">
               Se aplicarán las marcas: <strong className="text-green-700">{marcadosPasa.length} avanzan</strong>
               {e.siguiente ? <> a <strong>{e.siguiente.nombre}</strong></> : ' y quedan seleccionados como becarios'} y{' '}
-              <strong className="text-red-700">{marcadosNo.length} no pasan</strong> (quedan fuera del proceso).
+              <strong className="text-red-700">{marcadosNo.length} no avanzan</strong> (quedan fuera del proceso).
               {r.pendientes_de_decidir > 0 && <> Los {r.pendientes_de_decidir} sin decidir se quedan en esta etapa.</>}
             </p>
             {e.cupo !== null && totalPasan > e.cupo && <Caja tono="rojo">Con esta confirmación avanzan {totalPasan} y el cupo es {e.cupo}.</Caja>}
             <div className="grid gap-4 sm:grid-cols-2">
-              {[['Pasan', marcadosPasa, 'text-green-700'], ['No pasan', marcadosNo, 'text-red-700']].map(([t, l, c]) => (
+              {[['Avanzan', marcadosPasa, 'text-green-700'], ['No avanzan', marcadosNo, 'text-red-700']].map(([t, l, c]) => (
                 <div key={t as string}>
                   <div className={`mb-1 text-xs font-semibold ${c}`}>{t as string} ({(l as Fila[]).length})</div>
                   <ul className="max-h-60 space-y-0.5 overflow-y-auto rounded-md border border-gray-200 p-2 text-xs">
@@ -417,7 +417,7 @@ export function Avance() {
           pie={<><button className="btn-secundario" onClick={() => setDeshaciendo(null)}>Cancelar</button>
             <button className="btn-peligro" disabled={deshacer.isPending} onClick={() => deshacer.mutate(deshaciendo)}>Deshacer</button></>}>
           <p className="text-sm text-gray-700">
-            {deshaciendo.nombres} {deshaciendo.apellido_paterno} vuelve a <strong>{e.nombre}</strong> con la marca “{deshaciendo.resultado === 'PASA' ? 'pasa' : 'no pasa'}” sin confirmar.
+            {deshaciendo.nombres} {deshaciendo.apellido_paterno} vuelve a <strong>{e.nombre}</strong> con la marca “{deshaciendo.resultado === 'PASA' ? 'avanza' : 'no avanza'}” sin confirmar.
             {deshaciendo.avisado_en && ' Ojo: ya se le avisó el resultado por correo.'}
           </p>
         </Modal>

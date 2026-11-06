@@ -17,7 +17,7 @@ interface Inicial {
 const TEXTO_FILTRO: Record<TipoFiltroEtapa, string> = {
   EN_ETAPA: 'los estudiantes que están en',
   FALTAN_REQUISITOS: 'los estudiantes a los que les faltan documentos en',
-  PASA: 'los estudiantes que pasan',
+  PASA: 'los estudiantes que avanzan',
   NO_PASA: 'los estudiantes que no continúan después de',
 };
 

@@ -25,3 +25,25 @@
 .barra-arriba::-webkit-scrollbar-track { background: #f9fafb; }
 .barra-arriba::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; border: 3px solid #f9fafb; }
 .barra-arriba::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+/* Fondo con la paleta de la Fundación (verde, naranjo, terracota, durazno).
+   Blanco de base con manchas muy suaves: se notan, pero no compiten con el contenido. */
+.fondo-marca {
+  background-color: #fff;
+  background-image:
+    radial-gradient(circle at 92% 6%, rgba(69, 182, 156, 0.08), transparent 32%),
+    radial-gradient(circle at 4% 96%, rgba(249, 177, 79, 0.09), transparent 36%),
+    radial-gradient(circle at 60% 110%, rgba(217, 97, 74, 0.05), transparent 30%);
+  background-attachment: fixed;
+}
+.fondo-marca::before,
+.fondo-marca::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/fondo-formas.png') no-repeat center / contain;
+}
+/* Arriba a la derecha (espejada para que el borde cortado quede fuera de la pantalla) */
+.fondo-marca::before { top: -60px; right: -40px; width: 300px; height: 500px; transform: scaleX(-1); opacity: 0.14; }
+/* Abajo a la izquierda */
+.fondo-marca::after { bottom: -220px; left: -30px; width: 260px; height: 433px; opacity: 0.10; }

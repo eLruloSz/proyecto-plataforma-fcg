@@ -124,7 +124,7 @@ SELECT * FROM (VALUES
    E'Estimado/a {{nombre}}:\n\nLe compartimos la situación actual de los estudiantes de {{liceo}} en el proceso de selección de la Beca Carmen Goudie {{anio}}:\n\n{{estudiantes}}\n\nAgradecemos su apoyo para recordar a los estudiantes los documentos que tienen pendientes.\n\nSaludos cordiales,\n{{firma}}'),
   ('Aviso: avanzas a la siguiente etapa', 'AVISO_RESULTADO',
    '¡Avanzas a la siguiente etapa de la Beca Carmen Goudie {{anio}}!',
-   E'Hola {{nombre}}:\n\nNos alegra informarte que pasaste a la siguiente etapa del proceso de selección de la Beca Carmen Goudie {{anio}}. Pronto te enviaremos las instrucciones.\n\nSaludos,\n{{firma}}'),
+   E'Hola {{nombre}}:\n\nNos alegra informarte que avanzaste a la siguiente etapa del proceso de selección de la Beca Carmen Goudie {{anio}}. Pronto te enviaremos las instrucciones.\n\nSaludos,\n{{firma}}'),
   ('Aviso: no continúas en el proceso', 'AVISO_RESULTADO',
    'Resultado de tu postulación — Beca Carmen Goudie {{anio}}',
    E'Hola {{nombre}}:\n\nAgradecemos mucho tu participación en el proceso de selección de la Beca Carmen Goudie {{anio}}. En esta oportunidad no continúas a la siguiente etapa.\n\nCon la beca o sin la beca, te invitamos a seguir adelante detrás de tus sueños.\n\nSaludos,\n{{firma}}'),

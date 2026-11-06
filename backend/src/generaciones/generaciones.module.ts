@@ -131,19 +131,19 @@ export class GeneracionesService {
     const [f] = await this.ds.query(
       `SELECT id, nombre, anio, estado, historico, creado_en, cerrado_en, observaciones, resumen
          FROM procesos WHERE anio = $1 AND estado IN ('ACTIVO', 'CERRADO')`, [anio]);
-    if (!f) throw new NotFoundException(`No hay una generación ${anio}.`);
+    if (!f) throw new NotFoundException(`No hay un concurso ${anio}.`);
     return f;
   }
 
   private async buscarHistorica(anio: number): Promise<FilaProceso> {
     const f = await this.buscar(anio);
-    if (!f.historico) throw new ConflictException('Esta generación fue registrada por el sistema y no se puede modificar.');
+    if (!f.historico) throw new ConflictException('Este concurso fue registrado por el sistema y no se puede modificar.');
     return f;
   }
 
   private async verificarAnioLibre(anio: number) {
     const [otro] = await this.ds.query(`SELECT 1 FROM procesos WHERE anio = $1`, [anio]);
-    if (otro) throw new ConflictException(`Ya existe una generación del año ${anio}.`);
+    if (otro) throw new ConflictException(`Ya existe un concurso del año ${anio}.`);
   }
 
   private resumenManual(dto: GeneracionHistoricaDto): ResumenGeneracion {

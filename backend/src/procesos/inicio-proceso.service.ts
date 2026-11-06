@@ -198,7 +198,7 @@ export class InicioProcesoService {
   private async verificarAnioLibre(em: EntityManager, anio: number, exceptoId?: string) {
     const [otro] = await em.query(
       `SELECT 1 FROM procesos WHERE anio = $1 AND ($2::uuid IS NULL OR id <> $2)`, [anio, exceptoId ?? null]);
-    if (otro) throw new ConflictException(`Ya existe un proceso o una generación del año ${anio}.`);
+    if (otro) throw new ConflictException(`Ya existe un concurso del año ${anio}.`);
   }
 
   /** Copia etapas (nombre, descripción, clave, cupo) y sus requisitos activos. Devuelve cuántas copió. */
