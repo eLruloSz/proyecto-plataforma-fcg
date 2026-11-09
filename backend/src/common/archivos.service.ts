@@ -2,8 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { mkdir, writeFile, readFile } from 'fs/promises';
+import { mkdir, writeFile, readFile, unlink } from 'fs/promises';
 import * as path from 'path';
+import { filas } from './sql';
 
 export interface Archivo {
   id: string;
@@ -54,5 +55,11 @@ export class ArchivosService {
 
   async leer(a: Archivo): Promise<Buffer> {
     return readFile(path.join(this.dir, path.basename(a.ruta)));
+  }
+
+  /** Borra el archivo del disco y su referencia. No falla si el archivo ya no estaba en disco. */
+  async eliminar(id: string): Promise<void> {
+    const [a] = filas<{ ruta: string }>(await this.ds.query(`DELETE FROM archivos WHERE id = $1 RETURNING ruta`, [id]));
+    if (a) await unlink(path.join(this.dir, path.basename(a.ruta))).catch(() => undefined);
   }
 }

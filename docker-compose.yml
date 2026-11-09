@@ -34,6 +34,7 @@ services:
       - ./db/09_calendario_entrevistas.sql:/docker-entrypoint-initdb.d/09_calendario_entrevistas.sql:ro
       - ./db/10_hitos_por_etapa.sql:/docker-entrypoint-initdb.d/10_hitos_por_etapa.sql:ro
       - ./db/11_usuarios_acceso.sql:/docker-entrypoint-initdb.d/11_usuarios_acceso.sql:ro
+      - ./db/12_pautas_completadas.sql:/docker-entrypoint-initdb.d/12_pautas_completadas.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s

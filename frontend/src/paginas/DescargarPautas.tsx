@@ -1,12 +1,15 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../api';
+import { useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, ErrorApi } from '../api';
+import { useSesion } from '../sesion';
 import { Cargando, ErrorCarga, fecha, Modal, useAviso, Vacio } from '../ui';
 
 /** Un estudiante de la etapa y los datos que le faltan a su pauta (lo que quedará en blanco en el Word). */
 export interface FilaPauta {
   id: string; codigo: string; nombre: string; apellido_paterno: string; nombres: string;
   liceo: string; ranking: number | null; fecha_hora: string | null; faltan: string[];
+  /** Word de la pauta ya rellenado tras la entrevista (null = aún no se sube). */
+  completada: { nombre: string; subido_en: string } | null;
 }
 
 type Datos = 'todos' | 'faltan' | 'completos' | 'sin-fecha';
@@ -29,7 +32,9 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
   etapaId: string; etapaNombre: string; bajadas: Set<string>; onBajadas: (claves: string[]) => void; onCerrar: () => void;
 }) {
   const avisar = useAviso();
-  const { data, isLoading, error } = useQuery({
+  const { soloLectura } = useSesion();
+  const qc = useQueryClient();
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['pautas-lista', etapaId], queryFn: () => api.get<FilaPauta[]>(`/entrevistas/${etapaId}/pautas/lista`),
     staleTime: 0, refetchOnMount: 'always',
   });
@@ -39,6 +44,9 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
   const [orden, setOrden] = useState<Orden>('fecha');
   const [rankingHasta, setRankingHasta] = useState('');
   const [bajando, setBajando] = useState<string | null>(null); // id del estudiante, o 'todas'
+  const [subiendo, setSubiendo] = useState<string | null>(null); // id del estudiante al que se sube el Word completado
+  const entrada = useRef<HTMLInputElement>(null);
+  const destino = useRef<FilaPauta | null>(null);
 
   const clave = (id: string) => `${etapaId}:${id}`;
   const todos = data ?? [];
@@ -76,6 +84,42 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
     finally { setBajando(null); }
   };
 
+  /** Sube el Word completado. Si el servidor avisa que no trae el código del estudiante, se pide confirmar. */
+  const subirCompletada = async (f: FilaPauta, archivo: File, forzar = false) => {
+    setSubiendo(f.id);
+    try {
+      const datos = new FormData();
+      datos.append('archivo', archivo);
+      if (forzar) datos.append('forzar', 'true');
+      const r = await api.enviarFormulario<{ reemplazada: boolean }>(`/entrevistas/${etapaId}/estudiantes/${f.id}/pauta-completada`, datos);
+      avisar(`${r.reemplazada ? 'Pauta reemplazada' : 'Pauta guardada'} en el perfil de ${f.nombres} ${f.apellido_paterno}.`);
+      await refetch();
+      qc.invalidateQueries({ queryKey: ['avance'] });
+    } catch (e) {
+      if (e instanceof ErrorApi && e.estado === 409 && !forzar) {
+        if (window.confirm(`${e.message}\n\n¿Guardarla igual?`)) { await subirCompletada(f, archivo, true); return; }
+      } else avisar((e as Error).message, 'error');
+    } finally { setSubiendo(null); }
+  };
+
+  const elegirArchivo = (f: FilaPauta) => { destino.current = f; entrada.current?.click(); };
+
+  const bajarCompletada = async (f: FilaPauta) => {
+    try {
+      await api.descargar(`/entrevistas/${etapaId}/estudiantes/${f.id}/pauta-completada`, nombreSeguro(f.completada?.nombre ?? `Pauta completada ${f.codigo}.docx`));
+    } catch (e) { avisar((e as Error).message, 'error'); }
+  };
+
+  const quitarCompletada = async (f: FilaPauta) => {
+    if (!window.confirm(`¿Quitar la pauta completada de ${f.nombre}? Se borra el archivo guardado.`)) return;
+    try {
+      await api.del(`/entrevistas/${etapaId}/estudiantes/${f.id}/pauta-completada`);
+      avisar('Pauta completada quitada.');
+      await refetch();
+      qc.invalidateQueries({ queryKey: ['avance'] });
+    } catch (e) { avisar((e as Error).message, 'error'); }
+  };
+
   const bajarLista = async () => {
     const ids = lista.map((f) => f.id);
     if (!ids.length) return;
@@ -108,7 +152,10 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
       <p className="mb-3 text-sm text-gray-600">
         Cada pauta se rellena con lo que el sistema ya tiene del estudiante. Si falta un dato (por ejemplo, aún no tiene
         entrevista agendada), esa parte queda en blanco y el Word se descarga igual.
+        {!soloLectura && ' Después de la entrevista, sube aquí el mismo Word ya rellenado: queda guardado en el estudiante para que la dirección lo revise.'}
       </p>
+      <input ref={entrada} type="file" hidden accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onChange={(e) => { const a = e.target.files?.[0]; e.target.value = ''; if (a && destino.current) subirCompletada(destino.current, a); }} />
 
       <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input className="input lg:col-span-2" placeholder="Buscar por nombre, código o liceo…" value={busca} onChange={(e) => setBusca(e.target.value)} />
@@ -149,6 +196,7 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
                 <th className="px-3 py-2 text-center font-medium">Ranking</th>
                 <th className="px-3 py-2 font-medium">Entrevista</th>
                 <th className="px-3 py-2 font-medium">Datos</th>
+                <th className="px-3 py-2 font-medium">Pauta completada</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -165,6 +213,22 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
                       {f.faltan.length === 0
                         ? <span className="text-xs text-green-700">Completa</span>
                         : <div className="flex flex-wrap gap-1">{f.faltan.map((x) => <span key={x} className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">{x}</span>)}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {f.completada ? (
+                        <div className="space-y-1">
+                          <div className="text-green-700">✓ Subida · {fecha(f.completada.subido_en)}</div>
+                          <div className="flex flex-wrap gap-1">
+                            <button className="btn-secundario btn-chico" onClick={() => bajarCompletada(f)}>Ver / descargar</button>
+                            {!soloLectura && <button className="btn-secundario btn-chico" disabled={subiendo !== null} onClick={() => elegirArchivo(f)}>{subiendo === f.id ? 'Subiendo…' : 'Reemplazar'}</button>}
+                            {!soloLectura && <button className="btn-peligro btn-chico" disabled={subiendo !== null} onClick={() => quitarCompletada(f)}>Quitar</button>}
+                          </div>
+                        </div>
+                      ) : soloLectura ? <span className="italic text-gray-400">Sin subir</span> : (
+                        <button className="btn-secundario btn-chico" disabled={subiendo !== null} onClick={() => elegirArchivo(f)}>
+                          {subiendo === f.id ? 'Subiendo…' : '⬆ Subir completada'}
+                        </button>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {yaBajada && <span className="mr-2 text-xs text-green-700">✓ Descargada</span>}

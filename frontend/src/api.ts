@@ -232,6 +232,8 @@ export interface VistaAvance {
     ficha: FichaPostulacion | null;
     ranking: RankingEstudiante | null;
     entrevista_fecha?: string | null; entrevista_estado?: EstadoEntrevista | null; entrevista_realizada?: boolean;
+    /** Word de la pauta de entrevista ya completado, uno por etapa de entrevista. */
+    pautas_completadas?: { etapa_id: string; etapa: string; subido_en: string }[];
     encuentro_evento_id: string | null; asistio_encuentro: boolean | null;
   }[];
   resumen: {

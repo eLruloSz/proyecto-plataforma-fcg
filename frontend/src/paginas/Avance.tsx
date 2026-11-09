@@ -422,6 +422,14 @@ export function Avance() {
                           : <span className="text-gray-400">por agendar</span>}
                         {f.entrevista_fecha && <span className="ml-1.5 text-gray-500">{fecha(f.entrevista_fecha)}</span>}
                       </Link>
+                      {(f.pautas_completadas ?? []).map((pc) => (
+                        <button key={pc.etapa_id} className="ml-1.5 rounded border border-[#2B579A]/30 bg-blue-50 px-1.5 py-0.5 text-[#2B579A] hover:bg-blue-100"
+                          title={`Pauta completada de la entrevista (${pc.etapa}), subida ${fecha(pc.subido_en)}`}
+                          onClick={() => api.descargar(`/entrevistas/${pc.etapa_id}/estudiantes/${f.id}/pauta-completada`, `Pauta completada ${f.codigo} ${f.apellido_paterno} ${f.nombres}.docx`)
+                            .catch((err: Error) => avisar(err.message, 'error'))}>
+                          📄 Pauta{(f.pautas_completadas?.length ?? 0) > 1 ? ` · ${pc.etapa}` : ''}
+                        </button>
+                      ))}
                     </td>
                   )}
                   {muestraAcepta && (

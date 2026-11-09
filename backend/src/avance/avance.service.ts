@@ -60,6 +60,8 @@ export class AvanceService {
               r.resultado, COALESCE(r.confirmado, FALSE) AS confirmado, r.confirmado_en, r.avisado_en,
               COALESCE(en.realizada, FALSE) AS entrevista_realizada,
               en.fecha_hora AS entrevista_fecha, en.comentario AS entrevista_comentario, en.estado AS entrevista_estado,
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('etapa_id', x.etapa_id, 'etapa', ex.nombre, 'subido_en', x.subido_en) ORDER BY ex.orden)
+                          FROM pautas_entrevista x JOIN etapas ex ON ex.id = x.etapa_id WHERE x.postulacion_id = p.id), '[]'::jsonb) AS pautas_completadas,
               (SELECT to_jsonb(fi) - 'postulacion_id' - 'actualizado_por' FROM fichas_postulacion fi WHERE fi.postulacion_id = p.id) AS ficha,
               (SELECT jsonb_build_object('posicion', rp.posicion, 'puntaje_total', rp.puntaje_total::float,
                         'puntaje_academico', rp.puntaje_academico::float, 'puntaje_socioeconomico', rp.puntaje_socioeconomico::float,

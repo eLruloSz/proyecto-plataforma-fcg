@@ -1,13 +1,19 @@
 import {
-  BadRequestException, Body, ConflictException, Controller, Delete, Get, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, StreamableFile,
+  BadRequestException, Body, ConflictException, Controller, Delete, Get, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query,
+  StreamableFile, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import JSZip from 'jszip';
+import * as path from 'path';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsISO8601, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf,
 } from 'class-validator';
 import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { AuditoriaService } from '../common/auditoria.service';
+import { ArchivosService, TAMANO_MAXIMO } from '../common/archivos.service';
+import { filas } from '../common/sql';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 import { DatosPauta, empaquetarPautas, generarPauta } from './pauta-docx';
 
@@ -16,6 +22,7 @@ type EstadoEntrevista = (typeof ESTADOS_ENTREVISTA)[number];
 
 /** La fundación agenda en hora de Chile: los bloqueos (día y hora "de reloj") se comparan en esa zona. */
 const ZONA = 'America/Santiago';
+const subidaWord = FileInterceptor('archivo', { limits: { fileSize: TAMANO_MAXIMO } });
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 class EntrevistaDto {
@@ -43,6 +50,7 @@ export class EntrevistasService {
     private readonly ds: DataSource,
     private readonly proceso: ProcesoActualService,
     private readonly auditoria: AuditoriaService,
+    private readonly archivos: ArchivosService,
   ) {}
 
   private async etapa(etapaId: string) {
@@ -186,6 +194,12 @@ export class EntrevistasService {
    */
   async listaPautas(etapaId: string) {
     await this.etapa(etapaId);
+    const subidas = new Map<string, { nombre: string; subido_en: string }>();
+    for (const x of await this.ds.query(
+      `SELECT pe.postulacion_id, pe.subido_en, a.nombre_original AS nombre
+         FROM pautas_entrevista pe JOIN archivos a ON a.id = pe.archivo_id WHERE pe.etapa_id = $1`, [etapaId])) {
+      subidas.set(x.postulacion_id, { nombre: x.nombre, subido_en: x.subido_en });
+    }
     return (await this.datosPauta(etapaId)).map((d) => {
       const faltan: string[] = [];
       if (!d.fechaHora) faltan.push('Sin fecha de entrevista');
@@ -197,6 +211,7 @@ export class EntrevistasService {
       return {
         id: d.id, codigo: d.codigo, nombre: d.nombreCompleto, apellido_paterno: d.apellidoPaterno, nombres: d.nombres,
         liceo: d.establecimiento, ranking: d.rankingPreseleccion, fecha_hora: d.fechaHora, faltan,
+        completada: subidas.get(d.id) ?? null,
       };
     });
   }
@@ -209,6 +224,100 @@ export class EntrevistasService {
     const pautas: { nombre: string; contenido: Buffer }[] = [];
     for (const d of todos) pautas.push({ nombre: this.nombreArchivoPauta(d), contenido: await generarPauta(d) });
     return { nombre: `Pautas de entrevista - ${etapa.nombre}.zip`, buffer: await empaquetarPautas(pautas), cantidad: pautas.length };
+  }
+
+  // -------------------------------------------------------------------------
+  // Pauta completada: el Word de la entrevista, ya rellenado, se sube al estudiante
+  // -------------------------------------------------------------------------
+
+  /** Estudiante de la etapa (misma regla de pertenencia que el calendario). */
+  private async estudianteDeEtapa(etapaId: string, postulacionId: string) {
+    const [p] = await this.ds.query(
+      `SELECT p.id, p.codigo, pe.nombres, pe.apellido_paterno,
+              (p.etapa_id = $2) AS en_esta_etapa,
+              EXISTS (SELECT 1 FROM entrevistas e WHERE e.postulacion_id = p.id AND e.etapa_id = $2) AS tiene
+         FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id
+        WHERE p.id = $1 AND p.proceso_id = $3`,
+      [postulacionId, etapaId, await this.proceso.id()]);
+    if (!p) throw new NotFoundException('Estudiante no encontrado.');
+    if (!p.en_esta_etapa && !p.tiene) throw new ConflictException('El estudiante no está en esta etapa.');
+    return p as { id: string; codigo: string; nombres: string; apellido_paterno: string };
+  }
+
+  /** Texto plano del Word (sin formato). Falla si el archivo no es un .docx de verdad. */
+  private async textoDeDocx(buffer: Buffer): Promise<string> {
+    try {
+      const zip = await JSZip.loadAsync(buffer);
+      const doc = zip.file('word/document.xml');
+      if (!doc) throw new Error('sin document.xml');
+      const xml = await doc.async('string');
+      return [...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('');
+    } catch {
+      throw new BadRequestException('El archivo no es un Word (.docx) válido.');
+    }
+  }
+
+  private nombrePautaCompletada(p: { codigo: string; apellido_paterno: string; nombres: string }) {
+    return `Pauta completada ${p.codigo} ${p.apellido_paterno} ${p.nombres}.docx`.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ');
+  }
+
+  /**
+   * Guarda el Word completado del estudiante en esta etapa (reemplaza al anterior, si había).
+   * Para evitar subirlo al estudiante equivocado se exige que el Word traiga su código; si no lo trae,
+   * se avisa y solo se guarda cuando se confirma (`forzar`).
+   */
+  async subirPautaCompletada(etapaId: string, postulacionId: string, archivo: Express.Multer.File | undefined, forzar: boolean, usuarioId: string) {
+    await this.etapa(etapaId);
+    const est = await this.estudianteDeEtapa(etapaId, postulacionId);
+    if (!archivo) throw new BadRequestException('No se recibió ningún archivo.');
+    if (path.extname(archivo.originalname).toLowerCase() !== '.docx') {
+      throw new BadRequestException('Sube el Word de la pauta en formato .docx.');
+    }
+    const texto = await this.textoDeDocx(archivo.buffer);
+    const sinEspacios = (x: string) => x.replace(/\s+/g, '').toLowerCase();
+    if (!forzar && !sinEspacios(texto).includes(sinEspacios(est.codigo))) {
+      throw new ConflictException(
+        `Este Word no trae el código ${est.codigo}. Revisa que sea la pauta de ${est.nombres} ${est.apellido_paterno}; ` +
+        'si estás segura de que es la correcta, confirma para guardarla igual.');
+    }
+
+    const nuevo = await this.archivos.guardar(archivo);
+    const [previo] = await this.ds.query(
+      `SELECT archivo_id FROM pautas_entrevista WHERE postulacion_id = $1 AND etapa_id = $2`, [postulacionId, etapaId]);
+    await this.ds.query(
+      `INSERT INTO pautas_entrevista (postulacion_id, etapa_id, archivo_id, subido_por) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (postulacion_id, etapa_id) DO UPDATE SET archivo_id = $3, subido_por = $4, subido_en = NOW()`,
+      [postulacionId, etapaId, nuevo.id, usuarioId]);
+    if (previo) await this.archivos.eliminar(previo.archivo_id);
+    await this.auditoria.registrar(usuarioId, 'SUBIR_PAUTA_ENTREVISTA', 'postulaciones', postulacionId,
+      { etapaId, archivo: archivo.originalname, reemplaza: !!previo, forzado: forzar });
+    return { ok: true, reemplazada: !!previo };
+  }
+
+  async pautaCompletada(etapaId: string, postulacionId: string) {
+    await this.etapa(etapaId);
+    const est = await this.estudianteDeEtapa(etapaId, postulacionId).catch(() => null)
+      ?? (await this.ds.query(
+        `SELECT p.id, p.codigo, pe.nombres, pe.apellido_paterno FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id
+          WHERE p.id = $1 AND p.proceso_id = $2`, [postulacionId, await this.proceso.id()]))[0];
+    if (!est) throw new NotFoundException('Estudiante no encontrado.');
+    const [fila] = await this.ds.query(
+      `SELECT archivo_id FROM pautas_entrevista WHERE postulacion_id = $1 AND etapa_id = $2`, [postulacionId, etapaId]);
+    if (!fila) throw new NotFoundException('Este estudiante no tiene pauta completada en esta etapa.');
+    const a = await this.archivos.obtener(fila.archivo_id);
+    return { nombre: this.nombrePautaCompletada(est), buffer: await this.archivos.leer(a) };
+  }
+
+  async quitarPautaCompletada(etapaId: string, postulacionId: string, usuarioId: string) {
+    await this.etapa(etapaId);
+    const [fila] = filas<{ archivo_id: string }>(await this.ds.query(
+      `DELETE FROM pautas_entrevista pe USING postulaciones p
+        WHERE pe.postulacion_id = $1 AND pe.etapa_id = $2 AND p.id = pe.postulacion_id AND p.proceso_id = $3
+        RETURNING pe.archivo_id`, [postulacionId, etapaId, await this.proceso.id()]));
+    if (!fila) throw new NotFoundException('Este estudiante no tiene pauta completada en esta etapa.');
+    await this.archivos.eliminar(fila.archivo_id);
+    await this.auditoria.registrar(usuarioId, 'QUITAR_PAUTA_ENTREVISTA', 'postulaciones', postulacionId, { etapaId });
+    return { ok: true };
   }
 
   async bloquear(etapaId: string, dto: BloqueoDto, usuarioId: string) {
@@ -286,6 +395,38 @@ export class EntrevistasController {
     return new StreamableFile(r.buffer, {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', disposition: adjunto(r.nombre),
     });
+  }
+
+  /** Sube el Word de la pauta ya rellenado (campo `archivo`; `forzar=true` para guardar aunque no traiga el código). */
+  @Post('estudiantes/:postulacionId/pauta-completada')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(subidaWord)
+  subirCompletada(
+    @Param('etapaId', ParseUUIDPipe) etapaId: string,
+    @Param('postulacionId', ParseUUIDPipe) postulacionId: string,
+    @UploadedFile() archivo: Express.Multer.File, @Body('forzar') forzar: string | undefined, @Usuario() u: UsuarioSesion,
+  ) {
+    return this.svc.subirPautaCompletada(etapaId, postulacionId, archivo, forzar === 'true', u.id);
+  }
+
+  /** Descarga el Word completado (también para cuentas de solo lectura). */
+  @Get('estudiantes/:postulacionId/pauta-completada')
+  async descargarCompletada(
+    @Param('etapaId', ParseUUIDPipe) etapaId: string,
+    @Param('postulacionId', ParseUUIDPipe) postulacionId: string,
+  ) {
+    const r = await this.svc.pautaCompletada(etapaId, postulacionId);
+    return new StreamableFile(r.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', disposition: adjunto(r.nombre),
+    });
+  }
+
+  @Delete('estudiantes/:postulacionId/pauta-completada')
+  quitarCompletada(
+    @Param('etapaId', ParseUUIDPipe) etapaId: string,
+    @Param('postulacionId', ParseUUIDPipe) postulacionId: string, @Usuario() u: UsuarioSesion,
+  ) {
+    return this.svc.quitarPautaCompletada(etapaId, postulacionId, u.id);
   }
 
   @Put('estudiantes/:postulacionId')
