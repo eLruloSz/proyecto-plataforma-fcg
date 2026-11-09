@@ -11,6 +11,51 @@ import { ConfigurarEtapas } from './ConfigurarEtapas';
 import { CeldaFicha, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
 import { ESTADOS } from './Entrevistas';
 
+// --- NUEVO COMPONENTE: BotonExportarExcel ---
+export const BotonExportarExcel = ({ etapaId }: { etapaId: string }) => {
+  const [descargando, setDescargando] = useState(false);
+
+  const handleDescargar = async () => {
+    setDescargando(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8080/avance/${etapaId}/exportar`, {
+        method: 'GET',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) throw new Error('Error al generar el Excel');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Etapa_${etapaId}_Datos.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      alert('Hubo un problema al exportar el archivo.');
+    } finally {
+      setDescargando(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleDescargar}
+      disabled={descargando}
+      className="btn-secundario text-green-700 border-green-600 hover:bg-green-50"
+    >
+      {descargando ? 'Generando Excel...' : '📊 Exportar a Excel'}
+    </button>
+  );
+};
+// --- FIN DEL NUEVO COMPONENTE ---
+
 type Fila = VistaAvance['estudiantes'][number];
 type Filtro = 'todos' | 'sin-decidir' | 'faltan' | 'pasa' | 'no-pasa' | 'confirmados';
 
@@ -202,6 +247,8 @@ export function Avance() {
           <p className="text-sm text-gray-500">{AYUDA[tipoEtapa(e)]} Nada cambia hasta que confirmas.</p>
         </div>
         <div className="flex gap-2">
+          {/* AQUÍ SE INCLUYÓ EL BOTÓN DE EXPORTAR EXCEL */}
+          {etapaId && <BotonExportarExcel etapaId={etapaId} />}
           <button className="btn-secundario" onClick={() => setConfigEtapas(true)}>Configurar etapas</button>
           {e.id === actual?.id && (
             <button className="btn-secundario" onClick={() => setTerminando({})}>{e.siguiente ? 'Terminar etapa' : 'Última etapa'}</button>

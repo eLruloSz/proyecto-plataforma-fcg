@@ -1,8 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Module, Param, ParseUUIDPipe, Patch, Post, Put ,Res} from '@nestjs/common';
+import { Response } from 'express'
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { AvanceService } from './avance.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
+import { ExcelService } from '../common/excel.service'
+import { CommonModule } from '../common/common.module'
 
 class RequisitoDto { @IsString() @MinLength(1) @MaxLength(150) nombre: string; }
 class CumplidoDto { @IsBoolean() cumplido: boolean; }
@@ -22,7 +25,10 @@ class EntrevistaDto {
 @ApiBearerAuth()
 @Controller('avance/:etapaId')
 export class AvanceController {
-  constructor(private readonly svc: AvanceService) {}
+  constructor(
+    private readonly svc: AvanceService,
+    private readonly excelService: ExcelService 
+  ) {}
 
   @Get()
   vista(@Param('etapaId', ParseUUIDPipe) etapaId: string) {

@@ -1,11 +1,8 @@
-import { Global, Module } from '@nestjs/common';
-import { AuditoriaService } from './auditoria.service';
-import { ProcesoActualService } from './proceso-actual.service';
-import { ArchivosService } from './archivos.service';
+import { Module } from '@nestjs/common';
+import { ExcelService } from './excel.service';
 
-@Global()
 @Module({
-  providers: [AuditoriaService, ProcesoActualService, ArchivosService],
-  exports: [AuditoriaService, ProcesoActualService, ArchivosService],
+  providers: [ExcelService],
+  exports: [ExcelService],
 })
 export class CommonModule {}
