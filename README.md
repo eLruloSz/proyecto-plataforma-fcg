@@ -35,6 +35,16 @@ que le falten. Todas se pueden aplicar más de una vez sin problema.
 docker exec -i becas-db psql -U becas -d becas < db/11_usuarios_acceso.sql
 ```
 
+En **Windows PowerShell** el `<` no funciona; usa:
+
+```powershell
+Get-Content db\11_usuarios_acceso.sql -Raw | docker exec -i becas-db psql -U becas -d becas
+```
+
+Si una pantalla muestra «Internal server error» justo después de actualizar el código, casi
+siempre es una migración sin aplicar (el log dice `column ... does not exist` o
+`relation ... does not exist`): `docker logs becas-backend --tail 40`.
+
 | Migración | Qué agrega |
 |---|---|
 | `01_schema.sql` | Esquema base |
@@ -91,13 +101,42 @@ ofrece pasar a la siguiente.
    - Ficha RSH: datos de la cartola, con alertas de tramo y de diferencia de personas
      del hogar. La cartola no se guarda.
    - Subir el Excel del ranking y marcar quién avanza según el ranking.
-5. **Etapas 4 y 5 · Entrevistas.** Calendario semanal con los mismos estados y colores de
-   la planilla de la fundación, días u horarios bloqueados y comentarios.
+5. **Etapas 4 y 5 · Entrevistas** (Preselección N°2 y Selección de becarios).
+   - Calendario semanal con los mismos estados y colores de la planilla de la fundación,
+     días u horarios bloqueados y comentarios.
+   - En *Avance por etapa* cada estudiante tiene si la entrevista se hizo, fecha y hora y
+     un comentario, con filtro «Sin entrevistar». Estos campos nunca se bloquean.
+   - **Descargar Word:** la pauta de entrevista de la fundación, rellenada con los datos
+     del estudiante (ver *Exportar y descargar*).
 6. **Cerrar proceso** (en *Configurar etapas*). Queda guardado en *Generaciones
    anteriores* y vuelve a aparecer "Iniciar proceso" para el año siguiente.
 
 En cada etapa, *Confirmar avance* aplica quién pasa y quién no. Una etapa ya terminada se
 puede consultar con un clic en la barra, sin retroceder el proceso.
+
+## Exportar y descargar
+
+Cada tipo de documento tiene su color: **verde = Excel**, **azul = Word**.
+
+- **Exportar a Excel** (botón verde, arriba en *Avance por etapa*). Está en todas las etapas,
+  también al consultar una ya terminada. Trae los estudiantes de la etapa con los datos que se
+  tienen *hasta* esa etapa (colegio → contacto y encuentro → ficha RSH y ranking → entrevistas)
+  y las hojas del **Listado Final de Invitados** (*Invitados*, *Correos postulantes*, *Envíos y
+  formulario con RSH*, *Postulantes por liceo*). Un dato que falta deja la celda vacía; una
+  columna que nadie ha llenado no aparece. Del ranking solo se exporta la posición: el Excel
+  de Puntajes es aparte y está pendiente.
+- **Descargar Word** (botón azul, en *Entrevistas*). Abre una ventana con cada estudiante de la
+  etapa y su botón «Descargar». Se puede buscar por nombre, código o liceo, filtrar por liceo,
+  por datos faltantes o sin entrevista agendada, ordenar por fecha, ranking, liceo o apellido,
+  y limitar por ranking. «Descargar todas» baja un .zip con las que se ven en la lista.
+  - Se rellena con: código, nombre, liceo, comuna, posición en notas, ranking, fecha y hora de
+    la entrevista, tramo RSH, personas del hogar e ingreso mensual.
+  - Lo que el sistema no tiene queda en blanco y el Word se descarga igual: la ventana muestra
+    qué le falta a cada estudiante y avisa al descargar. Una pauta ya descargada se puede
+    volver a descargar.
+  - La plantilla vive dentro del código (`backend/src/entrevistas/plantilla-pauta.ts`, el
+    Word en base64; las instrucciones para cambiarla están en ese archivo).
+- Las cuentas de *solo lectura* también pueden exportar y descargar.
 
 ## Pruebas
 
@@ -120,7 +159,12 @@ API=http://localhost:8080/api node test/flujo-generaciones.mjs       # al final:
 
 ## Pendiente
 
-- Importar el cuestionario de la etapa 3 (personas del hogar según el formulario).
-- Pauta de entrevista, si la fundación la quiere en el sistema.
+- **Página de Selección de becarios** (la última etapa): comparar a los entrevistados, guardar
+  la apreciación general de la entrevista (aceptaría / con dudas / no aceptaría), el cupo y
+  la decisión del Comité.
 - Aceptación del liceo para los seleccionados.
+- Importar el cuestionario de la etapa 3 (personas del hogar según el formulario) y, con eso,
+  el Excel de Puntajes (se coordina con quien hace el RSH y el ranking).
+- **Pruebas automáticas** de la exportación a Excel y de la pauta en Word (hoy no tienen).
+- Reuniones virtuales por Teams (registro automático de asistencia): fuera por ahora.
 - Definir con la fundación qué hacer con los datos de los postulantes no seleccionados.

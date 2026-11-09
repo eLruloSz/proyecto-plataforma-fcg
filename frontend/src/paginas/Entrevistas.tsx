@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, BloqueoAgenda, CalendarioEntrevistas, EstadoEntrevista, EstudianteAgenda } from '../api';
 import { useProceso } from '../Layout';
+import { DescargarPautas } from './DescargarPautas';
 import { useEtapa } from '../etapa';
 import { Caja, Cargando, ErrorCarga, fecha, Modal, useAviso, Vacio } from '../ui';
 
@@ -64,6 +65,9 @@ export function Entrevistas() {
   // Semana que se está mirando (se recuerda por etapa: al cambiar de etapa se vuelve a calcular).
   const [semanaSel, setSemanaSel] = useState<{ etapa: string; lunes: Date } | null>(null);
   const semana = semanaSel?.etapa === etapaId ? semanaSel.lunes : null;
+  // Ventana "Descargar Word" y cuáles pautas ya se descargaron (solo como aviso; se pueden bajar de nuevo).
+  const [verPautas, setVerPautas] = useState(false);
+  const [pautasBajadas, setPautasBajadas] = useState<Set<string>>(new Set());
   const setSemana = (d: Date) => setSemanaSel({ etapa: etapaId!, lunes: d });
   const [editando, setEditando] = useState<{ e: EstudianteAgenda; dia?: string; hora?: string } | null>(null);
   const [celda, setCelda] = useState<{ dia: string; hora: string | null } | null>(null);
@@ -111,9 +115,13 @@ export function Entrevistas() {
           <h1 className="titulo">Calendario de entrevistas <span className="font-normal text-gray-500">· {data.etapa.nombre}</span></h1>
           <p className="text-sm text-gray-500">Haz clic en un bloque libre para agendar, o en una entrevista para cambiar su estado, moverla o comentar.</p>
         </div>
-        <BotonDescarga ruta={`/entrevistas/${data.etapa.id}/pautas`} nombre={`Pautas de entrevista - ${data.etapa.nombre}.zip`}
-          texto="Descargar todas las pautas (Word)" titulo="Un .zip con la pauta de cada estudiante de la etapa, rellenada con los datos que ya tiene el sistema" />
+        <button className="btn-word" onClick={() => setVerPautas(true)}
+          title="Elegir de qué estudiantes descargar la pauta de entrevista en Word">⬇ Descargar Word</button>
       </div>
+      {verPautas && (
+        <DescargarPautas etapaId={data.etapa.id} etapaNombre={data.etapa.nombre} bajadas={pautasBajadas}
+          onBajadas={(claves) => setPautasBajadas((s) => new Set([...s, ...claves]))} onCerrar={() => setVerPautas(false)} />
+      )}
 
       {/* Leyenda con totales */}
       <div className="flex flex-wrap gap-2 text-xs">
@@ -262,7 +270,7 @@ function BotonDescarga({ ruta, nombre, texto, titulo }: { ruta: string; nombre: 
     catch (e) { avisar((e as Error).message, 'error'); }
     finally { setBajando(false); }
   };
-  return <button className="btn-secundario btn-chico" disabled={bajando} onClick={bajar} title={titulo}>{bajando ? 'Preparando…' : `⬇ ${texto}`}</button>;
+  return <button className="btn-word btn-chico" disabled={bajando} onClick={bajar} title={titulo}>{bajando ? 'Preparando…' : `⬇ ${texto}`}</button>;
 }
 
 function EditarEntrevista({ calendario, estudiante: e, diaInicial, horaInicial, onCerrar }: {

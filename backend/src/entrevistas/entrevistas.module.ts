@@ -1,5 +1,5 @@
 import {
-  Body, ConflictException, Controller, Delete, Get, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Post, Put, StreamableFile,
+  BadRequestException, Body, ConflictException, Controller, Delete, Get, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, StreamableFile,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
@@ -122,12 +122,12 @@ export class EntrevistasService {
 
   /**
    * Datos que el sistema ya tiene de cada estudiante de la etapa para rellenar la pauta.
-   * Si se indica `postulacionId`, solo ese estudiante. Misma regla de pertenencia que el calendario.
+   * Si se indican `ids` (postulaciones), solo esos estudiantes. Misma regla de pertenencia que el calendario.
    */
-  private async datosPauta(etapaId: string, postulacionId?: string): Promise<(DatosPauta & { apellidoPaterno: string; nombres: string })[]> {
+  private async datosPauta(etapaId: string, ids?: string[]): Promise<(DatosPauta & { id: string; apellidoPaterno: string; nombres: string })[]> {
     const procesoId = await this.proceso.id();
     const filas = await this.ds.query(
-      `SELECT p.codigo, p.posicion_curso, pe.nombres, pe.apellido_paterno, pe.apellido_materno,
+      `SELECT p.id, p.codigo, p.posicion_curso, pe.nombres, pe.apellido_paterno, pe.apellido_materno,
               l.codigo AS liceo_codigo, l.nombre AS liceo, l.comuna,
               en.fecha_hora, f.tramo_rsh, f.rsh_pendiente, f.personas_hogar, f.personas_formulario, f.ingresos_hogar,
               rp.posicion AS ranking, rp.rsh AS ranking_rsh
@@ -141,15 +141,16 @@ export class EntrevistasService {
          LEFT JOIN ranking_postulacion rp ON rp.postulacion_id = p.id AND rp.carga_id = c.id
         WHERE p.proceso_id = $2
           AND (p.etapa_id = $1 OR en.postulacion_id IS NOT NULL OR (r.confirmado AND r.etapa_id = $1))
-          AND ($3::uuid IS NULL OR p.id = $3::uuid)
+          AND ($3::uuid[] IS NULL OR p.id = ANY($3::uuid[]))
         ORDER BY en.fecha_hora NULLS LAST, p.correlativo`,
-      [etapaId, procesoId, postulacionId ?? null]);
+      [etapaId, procesoId, ids ?? null]);
     return filas.map((x: any) => {
       // Tramo: lo digitado en la ficha; si no hay, lo que traía el Excel del ranking ("40%", "P").
       const tramo = x.rsh_pendiente ? 'Pendiente'
         : x.tramo_rsh ? `${x.tramo_rsh}%`
         : x.ranking_rsh ? (String(x.ranking_rsh).toUpperCase() === 'P' ? 'Pendiente' : String(x.ranking_rsh)) : null;
       return {
+        id: x.id,
         codigo: x.codigo,
         nombreCompleto: [x.nombres, x.apellido_paterno, x.apellido_materno].filter(Boolean).join(' '),
         establecimiento: `${x.liceo_codigo}. ${x.liceo}`,
@@ -174,16 +175,37 @@ export class EntrevistasService {
   /** Pauta de un estudiante. */
   async pauta(etapaId: string, postulacionId: string) {
     await this.etapa(etapaId);
-    const [d] = await this.datosPauta(etapaId, postulacionId);
+    const [d] = await this.datosPauta(etapaId, [postulacionId]);
     if (!d) throw new NotFoundException('Estudiante no encontrado en esta etapa.');
     return { nombre: this.nombreArchivoPauta(d), buffer: await generarPauta(d) };
   }
 
-  /** Pautas de todos los estudiantes de la etapa, en un .zip (ordenadas por fecha de entrevista). */
-  async pautasZip(etapaId: string) {
+  /**
+   * Lista para la ventana "Descargar Word": cada estudiante de la etapa y qué datos le faltan a su pauta.
+   * Lo que falta no impide descargarla: esa parte del Word queda en blanco.
+   */
+  async listaPautas(etapaId: string) {
+    await this.etapa(etapaId);
+    return (await this.datosPauta(etapaId)).map((d) => {
+      const faltan: string[] = [];
+      if (!d.fechaHora) faltan.push('Sin fecha de entrevista');
+      if (d.posicionNotas == null) faltan.push('Sin posición en notas');
+      if (d.rankingPreseleccion == null) faltan.push('Sin ranking');
+      if (!d.tramoRsh) faltan.push('Sin tramo RSH');
+      if (d.personasHogar == null) faltan.push('Sin personas del hogar');
+      if (!d.ingresoMensual) faltan.push('Sin ingreso mensual');
+      return {
+        id: d.id, codigo: d.codigo, nombre: d.nombreCompleto, apellido_paterno: d.apellidoPaterno, nombres: d.nombres,
+        liceo: d.establecimiento, ranking: d.rankingPreseleccion, fecha_hora: d.fechaHora, faltan,
+      };
+    });
+  }
+
+  /** Pautas de los estudiantes indicados (o de toda la etapa si no se indica ninguno), en un .zip. */
+  async pautasZip(etapaId: string, ids?: string[]) {
     const etapa = await this.etapa(etapaId);
-    const todos = await this.datosPauta(etapaId);
-    if (!todos.length) throw new NotFoundException('No hay estudiantes en esta etapa.');
+    const todos = await this.datosPauta(etapaId, ids);
+    if (!todos.length) throw new NotFoundException('No hay estudiantes para descargar.');
     const pautas: { nombre: string; contenido: Buffer }[] = [];
     for (const d of todos) pautas.push({ nombre: this.nombreArchivoPauta(d), contenido: await generarPauta(d) });
     return { nombre: `Pautas de entrevista - ${etapa.nombre}.zip`, buffer: await empaquetarPautas(pautas), cantidad: pautas.length };
@@ -231,10 +253,26 @@ export class EntrevistasController {
     return this.svc.calendario(etapaId);
   }
 
-  /** Todas las pautas de la etapa en un .zip. */
+  /** Estudiantes de la etapa con los datos que le faltan a cada pauta (ventana "Descargar Word"). */
+  @Get('pautas/lista')
+  listaPautas(@Param('etapaId', ParseUUIDPipe) etapaId: string) {
+    return this.svc.listaPautas(etapaId);
+  }
+
+  /**
+   * Pautas en un .zip. `ids` = postulaciones separadas por coma (se usa GET para que también
+   * pueda descargar una cuenta de solo lectura); sin `ids`, toda la etapa.
+   */
   @Get('pautas')
-  async pautas(@Param('etapaId', ParseUUIDPipe) etapaId: string) {
-    const r = await this.svc.pautasZip(etapaId);
+  async pautas(@Param('etapaId', ParseUUIDPipe) etapaId: string, @Query('ids') ids?: string) {
+    let lista: string[] | undefined;
+    if (ids !== undefined && ids !== '') {
+      lista = ids.split(',');
+      if (lista.length > 300 || lista.some((i) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i))) {
+        throw new BadRequestException('Lista de estudiantes inválida.');
+      }
+    }
+    const r = await this.svc.pautasZip(etapaId, lista);
     return new StreamableFile(r.buffer, { type: 'application/zip', disposition: adjunto(r.nombre) });
   }
 

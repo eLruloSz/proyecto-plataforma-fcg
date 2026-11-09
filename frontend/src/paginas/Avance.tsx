@@ -535,7 +535,7 @@ function BotonExcel({ etapaId, nombre }: { etapaId: string; nombre: string }) {
     finally { setBajando(false); }
   };
   return (
-    <button className="btn-secundario" disabled={bajando} onClick={bajar}
+    <button className="btn-excel" disabled={bajando} onClick={bajar}
       title="Excel con los estudiantes de esta etapa y los datos hasta aquí, más el Listado Final de Invitados">
       {bajando ? 'Preparando…' : '⬇ Exportar a Excel'}
     </button>
