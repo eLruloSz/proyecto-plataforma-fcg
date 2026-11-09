@@ -5,6 +5,8 @@ import { Cargando, DesplazamientoDoble, ErrorCarga, EtiquetaParticipacion, fecha
 
 /** Columna del liceo: queda fija a la izquierda al desplazar la tabla hacia la derecha. */
 const FIJA = 'sticky left-0 z-[2] shadow-[inset_-1px_0_0_theme(colors.gray.200)]';
+/** Fila de totales: queda fija abajo al desplazar la tabla hacia abajo. */
+const PIE = 'sticky bottom-0 z-[1] bg-gray-50 shadow-[inset_0_1px_0_theme(colors.gray.200)]';
 
 /** Reemplaza la planilla de seguimiento con semáforo: un clic marca o desmarca. */
 export function Seguimiento() {
@@ -45,7 +47,9 @@ export function TablaSeguimiento({ data, onMarcar }: {
 }) {
   const completados = (codigo: string) => data.filas.filter((f) => f.hitos[codigo]?.completado).length;
   return (
-    <DesplazamientoDoble className="tarjeta">
+    // Con alto máximo y scroll propio, los encabezados (sticky top) quedan visibles al bajar
+    // y la fila "Completados" (sticky bottom) queda siempre abajo.
+    <DesplazamientoDoble className="tarjeta max-h-[calc(100vh-11rem)] overflow-y-auto">
       <table className="tabla">
         <thead>
           <tr>
@@ -90,9 +94,9 @@ export function TablaSeguimiento({ data, onMarcar }: {
         </tbody>
         <tfoot>
           <tr className="bg-gray-50 text-xs font-semibold text-gray-600">
-            <td className={`px-3 py-2 ${FIJA} bg-gray-50`}>Completados</td>
-            <td className="px-3 py-2" />
-            {data.catalogo.map((h) => <td key={h.codigo} className="px-3 py-2 text-center tabular-nums">{completados(h.codigo)}/{data.filas.length}</td>)}
+            <td className={`px-3 py-2 ${FIJA} bottom-0 !z-[3] bg-gray-50`}>Completados</td>
+            <td className={`px-3 py-2 ${PIE}`} />
+            {data.catalogo.map((h) => <td key={h.codigo} className={`px-3 py-2 text-center tabular-nums ${PIE}`}>{completados(h.codigo)}/{data.filas.length}</td>)}
           </tr>
         </tfoot>
       </table>
