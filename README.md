@@ -58,6 +58,7 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `09_calendario_entrevistas.sql` | Calendario de entrevistas |
 | `10_hitos_por_etapa.sql` | Etapa a la que pertenece cada hito del seguimiento por liceo |
 | `11_usuarios_acceso.sql` | Roles (equipo / solo lectura), invitaciones y "¿Olvidaste tu contraseña?" |
+| `12_pautas_completadas.sql` | Word de la pauta de entrevista ya rellenado, guardado por estudiante y etapa |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 
@@ -134,6 +135,12 @@ Cada tipo de documento tiene su color: **verde = Excel**, **azul = Word**.
   - Lo que el sistema no tiene queda en blanco y el Word se descarga igual: la ventana muestra
     qué le falta a cada estudiante y avisa al descargar. Una pauta ya descargada se puede
     volver a descargar.
+  - **Subir el Word completado.** Después de la entrevista se sube el mismo Word, ya rellenado, en la
+    ventana *Descargar Word* (botón «Subir completada»). Queda guardado en el estudiante de esa etapa:
+    se puede descargar de nuevo, reemplazar o quitar. Si el archivo no trae el código del estudiante
+    se avisa antes de guardarlo (evita subir la pauta de otra persona). En *Avance por etapa*, la
+    columna *Entrevista* muestra «📄 Pauta» para quien la tiene, y también la pueden abrir las
+    cuentas de *solo lectura* (pensado para quienes deciden en la selección final).
   - La plantilla vive dentro del código (`backend/src/entrevistas/plantilla-pauta.ts`, el
     Word en base64; las instrucciones para cambiarla están en ese archivo).
 - Las cuentas de *solo lectura* también pueden exportar y descargar.
