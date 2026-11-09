@@ -9,7 +9,7 @@ import { FechasEncuentro, fechaEncuentro, InscribirEnBloque, RegistrarAsistencia
 import { ImportarContactos } from './ImportarContactos';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
-import { CeldaFicha, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
+import { CeldaFicha, CeldasRanking, COLUMNAS_RANKING, EncabezadosRanking, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
 import { ESTADOS } from './Entrevistas';
 
 type Fila = VistaAvance['estudiantes'][number];
@@ -24,7 +24,7 @@ const TITULOS: Record<string, string> = {
 const AYUDA: Record<string, string> = {
   INVITACION: 'Marca quién sigue a la etapa siguiente según su respuesta a la invitación.',
   ENCUENTRO: 'Inscribe a los estudiantes en una fecha del encuentro, registra la asistencia (solo marcas a los que no asistieron) y quién avanza.',
-  PRESELECCION: 'Revisa documentos, completa la ficha RSH, sube el ranking y marca quién avanza.',
+  PRESELECCION: 'Revisa documentos, sube el ranking, completa la ficha del hogar y marca quién avanza.',
   ENTREVISTA: 'Después de las entrevistas, marca quién avanza.',
   GENERAL: 'Marca quién avanza y quién no.',
 };
@@ -95,6 +95,14 @@ export function Avance() {
     queryKey: ['avance', etapaId], enabled: !!etapaId,
     queryFn: () => api.get<VistaAvance>(`/avance/${etapaId}`),
   });
+  // En la etapa en curso se revisa si en la etapa anterior quedó gente sin avisar de su resultado
+  // (por ejemplo, si se terminó la etapa antes de mandar los correos).
+  const anteriorId = v && proceso && v.etapa.id === actual?.id
+    ? proceso.etapas.find((x) => x.orden === v.etapa.orden - 1)?.id : undefined;
+  const { data: vAnterior } = useQuery({
+    queryKey: ['avance', anteriorId], enabled: !!anteriorId,
+    queryFn: () => api.get<VistaAvance>(`/avance/${anteriorId}`),
+  });
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [confirmando, setConfirmando] = useState(false);
   const [deshaciendo, setDeshaciendo] = useState<Fila | null>(null);
@@ -106,6 +114,9 @@ export function Avance() {
   const [subiendoRanking, setSubiendoRanking] = useState(false);
   const [marcandoRanking, setMarcandoRanking] = useState(false);
   const [terminando, setTerminando] = useState<{ mensaje?: string } | null>(null);
+  // Justo después de confirmar: ofrecer avisar el resultado ANTES de terminar la etapa.
+  // `terminar` = ya no queda nadie por decidir, así que después se puede pasar a la siguiente etapa.
+  const [avisando, setAvisando] = useState<{ pasan: number; noPasan: number; terminar: boolean } | null>(null);
   // Encuentro online (etapa 2). fechaFiltro: '' = todas, 'sin' = sin fecha, o el id de una fecha.
   const [fechaFiltro, setFechaFiltro] = useState('');
   const [asistenciaFiltro, setAsistenciaFiltro] = useState<FiltroAsistencia>('');
@@ -153,10 +164,12 @@ export function Avance() {
     onSuccess: (r) => {
       avisar(`Confirmado: ${r.pasan} avanzan${r.siguiente ? ` a ${r.siguiente.nombre}` : ''}, ${r.noPasan} no avanzan`);
       setConfirmando(false); refrescar();
-      // Si ya nadie queda por decidir en la etapa en curso, se ofrece pasar a la siguiente (avanza la barra de arriba).
-      if (v && v.etapa.id === actual?.id && v.resumen.pendientes_de_decidir === 0) {
-        setTerminando({ mensaje: 'Todos los estudiantes de esta etapa ya tienen su resultado confirmado.' });
-      }
+      // Primero se ofrece avisar el resultado (mientras se está en esta etapa). Si ya nadie queda por decidir
+      // en la etapa en curso, después se ofrece pasar a la siguiente (avanza la barra de arriba).
+      setAvisando({
+        pasan: r.pasan, noPasan: r.noPasan,
+        terminar: !!v && v.etapa.id === actual?.id && v.resumen.pendientes_de_decidir === 0,
+      });
     },
     onError: error409,
   });
@@ -221,8 +234,9 @@ export function Avance() {
     noAsistieron: v.estudiantes.filter((f) => f.asistio_encuentro === false).length,
     sinRegistrar: v.estudiantes.filter((f) => f.encuentro_evento_id && f.asistio_encuentro === null).length,
   } : null;
-  const avisarA = (tipo: string, soloSinAviso = true) =>
-    navegar(`/comunicacion?nuevo=1&etapa=${e.id}&tipo=${tipo}${soloSinAviso ? '&soloSinAviso=1' : ''}`);
+  const avisarA = (tipo: string, soloSinAviso = true, deEtapa = e.id) =>
+    navegar(`/comunicacion?nuevo=1&etapa=${deEtapa}&tipo=${tipo}${soloSinAviso ? '&soloSinAviso=1' : ''}`);
+  const ra = vAnterior?.resumen;
 
   return (
     <div className="max-w-full space-y-5">
@@ -263,6 +277,16 @@ export function Avance() {
             </div>
           )}
         </>
+      )}
+
+      {anteriorId && ra && ra.sin_avisar_pasa + ra.sin_avisar_no_pasa > 0 && (
+        <Caja tono="amarillo" titulo={`Falta avisar el resultado de la etapa anterior (${vAnterior!.etapa.nombre})`}>
+          <p>Hay estudiantes con su resultado confirmado a los que todavía no se les ha enviado el correo.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {ra.sin_avisar_pasa > 0 && <button className="btn-secundario btn-chico" onClick={() => avisarA('PASA', true, anteriorId)}>Avisar a los que avanzaron ({ra.sin_avisar_pasa})</button>}
+            {ra.sin_avisar_no_pasa > 0 && <button className="btn-secundario btn-chico" onClick={() => avisarA('NO_PASA', true, anteriorId)}>Avisar a los que no avanzaron ({ra.sin_avisar_no_pasa})</button>}
+          </div>
+        </Caja>
       )}
 
       {/* Resumen */}
@@ -362,9 +386,9 @@ export function Avance() {
         <table className="tabla">
           <thead>
             <tr>
-              {esPre && <th title="Lugar en el ranking y puntaje total">Ranking</th>}
+              {esPre && <EncabezadosRanking />}
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th className="text-right">Prom.</th>
-              {esPre && <th>RSH y hogar</th>}
+              {esPre && <th title="Datos del hogar según la cartola RSH">Hogar (ficha)</th>}
               {esEntrevista && <th>Entrevista</th>}
               {esEncuentro && <><th className="min-w-[170px]">Fecha del encuentro</th><th>Asistió</th></>}
               {muestraAcepta && <th>Aceptó postular</th>}
@@ -373,20 +397,13 @@ export function Avance() {
             </tr>
           </thead>
           <tbody>
-            {filas.length === 0 && <tr><td colSpan={5 + requisitos.length + (esPre ? 2 : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0) + (muestraAcepta ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
+            {filas.length === 0 && <tr><td colSpan={5 + requisitos.length + (esPre ? COLUMNAS_RANKING + 1 : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0) + (muestraAcepta ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
             {filas.map((f) => {
               const bloqueado = f.confirmado || !f.en_esta_etapa;
               const fondo = f.confirmado ? 'bg-gray-50 text-gray-500' : f.resultado === 'PASA' ? 'bg-green-50/70' : f.resultado === 'NO_PASA' ? 'bg-red-50/60' : '';
               return (
                 <tr key={f.id} className={fondo}>
-                  {esPre && (
-                    <td className="whitespace-nowrap">
-                      {f.ranking ? (
-                        <div><strong className="tabular-nums">{f.ranking.posicion ?? '—'}°</strong>
-                          <span className="ml-1 text-xs text-gray-500">{f.ranking.puntaje_total ?? '—'} pts</span></div>
-                      ) : <span className="text-xs text-gray-400">sin ranking</span>}
-                    </td>
-                  )}
+                  {esPre && <CeldasRanking r={f.ranking} />}
                   <td className="font-mono text-xs">{f.codigo}</td>
                   <td className={`whitespace-nowrap ${f.resultado === 'NO_PASA' ? 'line-through decoration-red-400' : ''}`}>
                     {f.apellido_paterno} {f.apellido_materno}, {f.nombres}
@@ -499,6 +516,33 @@ export function Avance() {
         </Modal>
       )}
 
+      {avisando && (
+        <Modal titulo="Avisar el resultado" onCerrar={() => setAvisando(null)} ancho="max-w-lg"
+          pie={<>
+            <button className="btn-secundario" onClick={() => setAvisando(null)}>Más tarde</button>
+            {avisando.terminar && e.siguiente && (
+              <button className="btn-secundario" onClick={() => {
+                setAvisando(null);
+                setTerminando({ mensaje: 'Todos los estudiantes de esta etapa ya tienen su resultado confirmado.' });
+              }}>Terminar la etapa</button>
+            )}
+          </>}>
+          <div className="space-y-3 text-sm">
+            <p className="text-gray-700">
+              Se confirmaron <strong className="text-green-700">{avisando.pasan} que avanzan</strong> y{' '}
+              <strong className="text-red-700">{avisando.noPasan} que no avanzan</strong>. ¿Les avisas ahora por correo?
+            </p>
+            {avisando.terminar && e.siguiente && (
+              <p className="text-gray-500">Conviene avisar antes de terminar la etapa. Cuando vuelvas, la etapa se termina con el botón «Terminar etapa» de arriba.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {r.sin_avisar_pasa > 0 && <button className="btn-primario" onClick={() => { setAvisando(null); avisarA('PASA'); }}>Avisar a los que avanzan ({r.sin_avisar_pasa})</button>}
+              {r.sin_avisar_no_pasa > 0 && <button className="btn-primario" onClick={() => { setAvisando(null); avisarA('NO_PASA'); }}>Avisar a los que no avanzan ({r.sin_avisar_no_pasa})</button>}
+              {r.sin_avisar_pasa + r.sin_avisar_no_pasa === 0 && <span className="text-gray-500">Actualizando…</span>}
+            </div>
+          </div>
+        </Modal>
+      )}
       {deshaciendo && (
         <Modal titulo="Deshacer confirmación" onCerrar={() => setDeshaciendo(null)} ancho="max-w-md"
           pie={<><button className="btn-secundario" onClick={() => setDeshaciendo(null)}>Cancelar</button>

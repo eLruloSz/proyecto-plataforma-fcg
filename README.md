@@ -59,6 +59,7 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `10_hitos_por_etapa.sql` | Etapa a la que pertenece cada hito del seguimiento por liceo |
 | `11_usuarios_acceso.sql` | Roles (equipo / solo lectura), invitaciones y "¿Olvidaste tu contraseña?" |
 | `12_pautas_completadas.sql` | Word de la pauta de entrevista ya rellenado, guardado por estudiante y etapa |
+| `13_plantilla_invitacion_lista.sql` | Plantilla «Invitación a postular (listado para la contraparte)»: solo los nombres de los invitados + enlace al formulario |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 

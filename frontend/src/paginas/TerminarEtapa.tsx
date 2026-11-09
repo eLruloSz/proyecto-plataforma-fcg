@@ -62,6 +62,23 @@ export function TerminarEtapa({ etapaId, onCerrar, mensaje }: { etapaId: string;
           La etapa {t.etapa.orden} queda como terminada (verde) y comienza <strong>{t.siguiente.orden}. {t.siguiente.nombre}</strong>.
           El menú pasa a mostrar lo de la nueva etapa; esta se podrá seguir consultando con un clic en la barra de arriba.
         </p>
+        {r.sin_avisar_pasa + r.sin_avisar_no_pasa > 0 && (
+          <Caja tono="amarillo" titulo="Hay estudiantes sin avisar de su resultado">
+            <p>Es mejor avisarles antes de terminar la etapa (después también se puede, desde el aviso de la etapa siguiente).</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {r.sin_avisar_pasa > 0 && (
+                <button className="btn-secundario btn-chico" onClick={() => { onCerrar(); navegar(`/comunicacion?nuevo=1&etapa=${t.etapa.id}&tipo=PASA&soloSinAviso=1`); }}>
+                  Avisar a los que avanzan ({r.sin_avisar_pasa})
+                </button>
+              )}
+              {r.sin_avisar_no_pasa > 0 && (
+                <button className="btn-secundario btn-chico" onClick={() => { onCerrar(); navegar(`/comunicacion?nuevo=1&etapa=${t.etapa.id}&tipo=NO_PASA&soloSinAviso=1`); }}>
+                  Avisar a los que no avanzan ({r.sin_avisar_no_pasa})
+                </button>
+              )}
+            </div>
+          </Caja>
+        )}
         {pendientes.length > 0 ? (
           <Caja tono="amarillo" titulo="Quedan cosas pendientes en esta etapa">
             <ul className="list-disc space-y-0.5 pl-5">

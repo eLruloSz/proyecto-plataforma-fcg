@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Confirmacion, Encuentro, Invitado } from '../api';
 import { useProceso } from '../Layout';
@@ -80,6 +80,13 @@ export function Invitados() {
   const [q, setQ] = useState('');
   const [liceoId, setLiceoId] = useState('');
   const [importando, setImportando] = useState(false);
+  // "Subir Excel" desde «Qué hacer ahora» llega con ?importar=1: abre la carga de contactos.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get('importar') !== '1') return;
+    setImportando(true);
+    setParams((p) => { p.delete('importar'); return p; }, { replace: true });
+  }, [params, setParams]);
   const [comentando, setComentando] = useState<Invitado | null>(null);
   const [quitando, setQuitando] = useState<Invitado | null>(null);
   const quitar = useMutation({

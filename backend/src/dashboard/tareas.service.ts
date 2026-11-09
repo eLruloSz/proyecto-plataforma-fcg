@@ -201,12 +201,16 @@ export class TareasService {
       { clave: 'invitados', titulo: 'Elegir a los invitados de cada liceo', hecha: d.con_invitados > 0 && d.sin_invitados === 0,
         detalle: d.sin_invitados ? `${plural(d.sin_invitados, 'liceo', 'liceos')} con nómina y sin invitados` : `${i.invitados} invitados`,
         accion: { texto: 'Liceos y nóminas', ruta: '/liceos' } },
+      // Primero los contactos y después el correo: sin email el correo no les llega.
+      { clave: 'contactos', titulo: 'Subir los contactos de los invitados (Excel)', hecha: i.invitados > 0 && i.sin_email === 0,
+        detalle: i.sin_email
+          ? `${plural(i.sin_email, 'invitado', 'invitados')} sin email. Súbelos antes de enviarles el correo.`
+          : 'Todos tienen email.',
+        accion: { texto: 'Subir Excel', ruta: '/invitados?importar=1' } },
       { clave: 'invitacion', titulo: 'Enviar la invitación a los estudiantes', hecha: d.con_invitados > 0 && d.sin_invitacion === 0,
-        detalle: d.sin_invitacion ? `${plural(d.sin_invitacion, 'liceo', 'liceos')} sin invitación enviada` : 'Enviada en todos los liceos.',
+        detalle: (d.sin_invitacion ? `${plural(d.sin_invitacion, 'liceo', 'liceos')} sin invitación enviada` : 'Enviada en todos los liceos.')
+          + (d.sin_invitacion && i.sin_email ? ` Primero sube los contactos: ${plural(i.sin_email, 'invitado', 'invitados')} sin email.` : ''),
         accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=INVITACION_ESTUDIANTES' } },
-      { clave: 'contactos', titulo: 'Completar email y teléfono de los invitados', hecha: i.invitados > 0 && i.sin_email === 0,
-        detalle: i.sin_email ? `${plural(i.sin_email, 'invitado', 'invitados')} sin email` : 'Todos tienen email.',
-        accion: { texto: 'Invitados', ruta: '/invitados' } },
       { clave: 'respuestas', titulo: 'Registrar quién acepta postular', hecha: i.invitados > 0 && i.sin_respuesta === 0,
         detalle: `${i.aceptaron} aceptaron · ${i.sin_respuesta} sin respuesta`,
         accion: { texto: 'Invitados', ruta: '/invitados' } },

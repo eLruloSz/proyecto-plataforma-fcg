@@ -6,19 +6,78 @@ import { Caja, Etiqueta, fecha, Modal, useAviso } from '../ui';
 type Fila = VistaAvance['estudiantes'][number];
 
 // ---------------------------------------------------------------------------
+// Ranking en la tabla de la etapa
+// ---------------------------------------------------------------------------
+
+/** Encabezados de las columnas del ranking (con el máximo de cada puntaje). */
+export const COLUMNAS_RANKING = 6;
+export function EncabezadosRanking() {
+  return (
+    <>
+      <th title="Lugar en el ranking general">Lugar</th>
+      <th className="text-right" title="Puntaje total (máx. 110)">Total</th>
+      <th className="text-right" title="Puntaje académico (máx. 35)">Acad. <span className="font-normal text-gray-400">/35</span></th>
+      <th className="text-right" title="Puntaje socioeconómico (máx. 50) = I.P.C. + nivel educacional de los padres + vulnerabilidad">Socioec. <span className="font-normal text-gray-400">/50</span></th>
+      <th className="text-right" title="Compromiso y participación (máx. 25)">Comp. <span className="font-normal text-gray-400">/25</span></th>
+      <th title="RSH según el Excel del ranking">RSH</th>
+    </>
+  );
+}
+
+/** "40%" → 40 · "P" → 'P' · otro texto → null */
+function leerRsh(rsh: string | null): number | 'P' | null {
+  if (!rsh) return null;
+  if (/^p/i.test(rsh.trim())) return 'P';
+  const n = Number(rsh.replace('%', '').replace(',', '.').trim());
+  return Number.isFinite(n) ? (n > 0 && n <= 1 ? Math.round(n * 100) : n) : null; // 0,4 → 40 si viene como fracción
+}
+
+/** RSH con color: hasta 40% verde, 41–50% amarillo (caso a caso), sobre 50% rojo, P = pendiente. */
+export function EtiquetaRsh({ rsh }: { rsh: string | null }) {
+  const v = leerRsh(rsh);
+  if (v === null) return <span className="text-xs text-gray-400">{rsh ?? '—'}</span>;
+  if (v === 'P') return <Etiqueta tono="amarillo">Pendiente</Etiqueta>;
+  const tono = v <= 40 ? 'verde' : v <= 50 ? 'amarillo' : 'rojo';
+  const ayuda = v <= 40 ? 'Dentro del requisito (≤ 40%)' : v <= 50 ? 'Entre 41% y 50%: revisar caso a caso' : 'Sobre el máximo (50%)';
+  return <span title={ayuda}><Etiqueta tono={tono}>{v}%</Etiqueta></span>;
+}
+
+const p1 = (n: number | null | undefined) => (n === null || n === undefined ? '—' : String(Math.round(n * 10) / 10).replace('.', ','));
+
+/** Las celdas del ranking de un estudiante (o "sin ranking" ocupando todas). */
+export function CeldasRanking({ r }: { r: Fila['ranking'] }) {
+  if (!r) return <td colSpan={COLUMNAS_RANKING} className="text-xs text-gray-400">sin ranking</td>;
+  return (
+    <>
+      <td className="font-semibold tabular-nums">{r.posicion ?? '—'}°</td>
+      <td className="text-right font-semibold tabular-nums">{p1(r.puntaje_total)}</td>
+      <td className="text-right tabular-nums" title={r.notas !== null ? `Notas ${p1(r.notas)}${r.ranking_notas ? ` · ${r.ranking_notas}° de su liceo` : ''}` : undefined}>
+        {p1(r.puntaje_academico)}
+        {r.ranking_notas ? <div className="text-[11px] text-gray-400">{r.ranking_notas}° liceo</div> : null}
+      </td>
+      <td className="text-right tabular-nums">
+        {p1(r.puntaje_socioeconomico)}
+        <div className="whitespace-nowrap text-[11px] text-gray-400" title="I.P.C. · Nivel educacional padres · Vulnerabilidad">
+          IPC {p1(r.puntaje_ipc)} · Pad. {p1(r.puntaje_nivel_padres)} · Vul. {p1(r.puntaje_vulnerabilidad)}
+        </div>
+      </td>
+      <td className="text-right tabular-nums">{p1(r.puntaje_compromiso)}</td>
+      <td><EtiquetaRsh rsh={r.rsh} /></td>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Ficha de postulación (datos de la cartola RSH)
 // ---------------------------------------------------------------------------
 
-/** "0 a 40%", "41 a 50%"… como lo dice la cartola. */
-export const textoTramo = (t: number) => (t === 40 ? '0 a 40%' : `${t - 9} a ${t}%`);
-
-/** Alertas de la ficha: lo que la fundación revisa a mano hoy. */
+/**
+ * Alertas de la ficha: lo que la fundación revisa a mano hoy.
+ * El % de RSH ya no se digita aquí: viene del Excel del ranking (columna RSH, con su color).
+ */
 export function alertasFicha(f: FichaPostulacion | null): { tono: 'amarillo' | 'rojo'; texto: string }[] {
   if (!f) return [];
   const a: { tono: 'amarillo' | 'rojo'; texto: string }[] = [];
-  if (f.rsh_pendiente) a.push({ tono: 'amarillo', texto: 'RSH pendiente' });
-  if (f.tramo_rsh && f.tramo_rsh > 50) a.push({ tono: 'rojo', texto: `Tramo ${textoTramo(f.tramo_rsh)}: sobre el máximo` });
-  else if (f.tramo_rsh === 50) a.push({ tono: 'amarillo', texto: 'Tramo 41 a 50%: revisar caso a caso' });
   if (f.personas_formulario && f.personas_hogar && f.personas_formulario !== f.personas_hogar) {
     a.push({ tono: 'amarillo', texto: `Formulario dice ${f.personas_formulario} personas y la cartola ${f.personas_hogar}` });
   }
@@ -29,7 +88,7 @@ export function alertasFicha(f: FichaPostulacion | null): { tono: 'amarillo' | '
   return a;
 }
 
-/** Celda de la tabla de la etapa: tramo y alertas, con botón para abrir la ficha. */
+/** Celda de la tabla de la etapa: datos del hogar y alertas, con botón para abrir la ficha. */
 export function CeldaFicha({ f, onAbrir }: { f: Fila; onAbrir: () => void }) {
   const alertas = alertasFicha(f.ficha);
   const apoyo = f.ficha ? (f.ficha.con_discapacidad ?? 0) + (f.ficha.con_dependencia ?? 0) + (f.ficha.con_invalidez ?? 0) + (f.ficha.con_nee ?? 0) : 0;
@@ -38,9 +97,9 @@ export function CeldaFicha({ f, onAbrir }: { f: Fila; onAbrir: () => void }) {
       {!f.ficha ? <span className="text-xs text-gray-400 underline">completar ficha</span> : (
         <div className="space-y-0.5 text-xs">
           <div className="text-gray-800">
-            {f.ficha.rsh_pendiente ? 'RSH pendiente' : f.ficha.tramo_rsh ? `Tramo ${textoTramo(f.ficha.tramo_rsh)}` : 'Sin tramo'}
-            {f.ficha.personas_hogar ? <span className="text-gray-400"> · {f.ficha.personas_hogar} pers.</span> : null}
+            {f.ficha.personas_hogar ? `${f.ficha.personas_hogar} personas` : 'Sin personas del hogar'}
             {apoyo > 0 && <span className="text-gray-400"> · {apoyo} con apoyo</span>}
+            {f.ficha.observaciones && <span className="text-gray-400" title={f.ficha.observaciones}> · 💬</span>}
           </div>
           {alertas.map((x) => <div key={x.texto} className={x.tono === 'rojo' ? 'text-red-700' : 'text-yellow-800'}>⚠ {x.texto}</div>)}
         </div>
@@ -50,9 +109,9 @@ export function CeldaFicha({ f, onAbrir }: { f: Fila; onAbrir: () => void }) {
 }
 
 type FormFicha = Record<
-  'tramo' | 'actualizada' | 'personas' | 'menores' | 'mayores' | 'discapacidad' | 'dependencia' | 'invalidez' | 'nee' | 'ingresos' | 'formulario' | 'observaciones',
+  'actualizada' | 'personas' | 'menores' | 'mayores' | 'discapacidad' | 'dependencia' | 'invalidez' | 'nee' | 'ingresos' | 'formulario' | 'observaciones',
   string
-> & { pendiente: boolean };
+>;
 
 const aTexto = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
 const aNumero = (s: string) => (s.trim() === '' ? null : Number(s));
@@ -62,17 +121,17 @@ export function FichaModal({ estudiante, onCerrar }: { estudiante: Fila; onCerra
   const avisar = useAviso();
   const f = estudiante.ficha;
   const [d, setD] = useState<FormFicha>({
-    tramo: aTexto(f?.tramo_rsh), pendiente: f?.rsh_pendiente ?? false, actualizada: f?.rsh_actualizada?.slice(0, 10) ?? '',
+    actualizada: f?.rsh_actualizada?.slice(0, 10) ?? '',
     personas: aTexto(f?.personas_hogar), menores: aTexto(f?.menores_18), mayores: aTexto(f?.mayores_60),
     discapacidad: aTexto(f?.con_discapacidad), dependencia: aTexto(f?.con_dependencia), invalidez: aTexto(f?.con_invalidez), nee: aTexto(f?.con_nee),
     ingresos: f?.ingresos_hogar ?? '', formulario: aTexto(f?.personas_formulario), observaciones: f?.observaciones ?? '',
   });
   const [error, setError] = useState('');
-  const set = (k: keyof FormFicha, v: string | boolean) => { setD((x) => ({ ...x, [k]: v })); setError(''); };
+  const set = (k: keyof FormFicha, v: string) => { setD((x) => ({ ...x, [k]: v })); setError(''); };
 
   const guardar = useMutation({
     mutationFn: () => api.put<FichaPostulacion>(`/postulaciones/${estudiante.id}/ficha`, {
-      tramoRsh: d.pendiente ? null : aNumero(d.tramo), rshPendiente: d.pendiente, rshActualizada: d.actualizada || null,
+      rshActualizada: d.actualizada || null,
       personasHogar: aNumero(d.personas), menores18: aNumero(d.menores), mayores60: aNumero(d.mayores),
       conDiscapacidad: aNumero(d.discapacidad), conDependencia: aNumero(d.dependencia), conInvalidez: aNumero(d.invalidez), conNee: aNumero(d.nee),
       ingresosHogar: d.ingresos || null, personasFormulario: aNumero(d.formulario), observaciones: d.observaciones || null,
@@ -94,7 +153,7 @@ export function FichaModal({ estudiante, onCerrar }: { estudiante: Fila; onCerra
 
   // Vista previa de las alertas con lo que se está escribiendo.
   const alertas = alertasFicha({
-    tramo_rsh: d.pendiente ? null : aNumero(d.tramo), rsh_pendiente: d.pendiente, rsh_actualizada: d.actualizada || null,
+    rsh_actualizada: d.actualizada || null,
     personas_hogar: aNumero(d.personas), personas_formulario: aNumero(d.formulario),
   } as FichaPostulacion);
 
@@ -111,24 +170,20 @@ export function FichaModal({ estudiante, onCerrar }: { estudiante: Fila; onCerra
         <button className="btn-primario" disabled={guardar.isPending} onClick={enviar}>Guardar ficha</button></>}>
       <div className="space-y-5 text-sm">
         <p className="text-gray-500">
-          Copia los datos desde la cartola del Registro Social de Hogares que envió el estudiante. La cartola no se sube al sistema.
+          Copia los datos del hogar desde la cartola del Registro Social de Hogares que envió el estudiante. La cartola no se sube al sistema.
           Deja en blanco lo que no tengas.
         </p>
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">¿Cuál es el tramo del hogar?</h3>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block">
-              <span className="label">Tramo RSH</span>
-              <select className="input py-1.5" value={d.tramo} disabled={d.pendiente} onChange={(e) => set('tramo', e.target.value)}>
-                <option value="">Sin dato</option>
-                {[40, 50, 60, 70, 80, 90, 100].map((t) => <option key={t} value={t}>{textoTramo(t)}</option>)}
-              </select>
-            </label>
-            <label className="flex items-end gap-2 pb-2">
-              <input type="checkbox" checked={d.pendiente} onChange={(e) => set('pendiente', e.target.checked)} />
-              <span>RSH pendiente</span>
-            </label>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Registro Social de Hogares</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <span className="label">% RSH (del Excel del ranking)</span>
+              <div className="py-1.5">
+                {estudiante.ranking ? <EtiquetaRsh rsh={estudiante.ranking.rsh} />
+                  : <span className="text-xs text-gray-400">Aparece al subir el ranking</span>}
+              </div>
+            </div>
             <label className="block">
               <span className="label">Última actualización de información</span>
               <input type="date" className="input py-1.5" value={d.actualizada} onChange={(e) => set('actualizada', e.target.value)} />
@@ -284,7 +339,7 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
                   <td className="text-right tabular-nums text-gray-500">{pts(f.puntajeSocioeconomico)}</td>
                   <td className="text-right tabular-nums text-gray-500">{pts(f.puntajeCompromiso)}</td>
                   <td className="text-right font-semibold tabular-nums">{pts(f.puntajeTotal)}</td>
-                  <td>{f.rsh === 'P' ? <Etiqueta tono="amarillo">Pendiente</Etiqueta> : f.rsh ?? '—'}</td>
+                  <td><EtiquetaRsh rsh={f.rsh} /></td>
                 </tr>
               ))}
             </tbody>

@@ -254,6 +254,8 @@ export interface FichaPostulacion {
 export interface RankingEstudiante {
   posicion: number | null; puntaje_total: number | null; puntaje_academico: number | null;
   puntaje_socioeconomico: number | null; puntaje_compromiso: number | null; rsh: string | null;
+  notas: number | null; ranking_notas: number | null; ipc: number | null; puntaje_ipc: number | null;
+  puntaje_nivel_padres: number | null; puntaje_vulnerabilidad: number | null;
 }
 export interface FilaRankingPrevia {
   fila: number; id: string | null; establecimiento: string | null; apellidoPaterno: string | null; apellidoMaterno: string | null; nombre: string | null;

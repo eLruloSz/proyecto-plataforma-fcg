@@ -54,6 +54,8 @@ interface Destinatario {
   codigo?: string;
   curso?: string;
   estudiantes?: string;
+  /** {{lista_estudiantes}}: solo los nombres, sin Id ni etapa. */
+  listaEstudiantes?: string;
   pendientes?: string;
 }
 
@@ -179,11 +181,13 @@ export class EnviosService {
   }
 
   /**
-   * Texto de {{estudiantes}} para cada liceo: una línea por estudiante con su
-   * Id, etapa y lo que le falta. Es lo que la contraparte necesita para
-   * ayudar a los estudiantes a completar su postulación.
+   * Textos de los estudiantes de cada liceo:
+   *  - detalle ({{estudiantes}}): una línea por estudiante con su Id, etapa y lo que le falta.
+   *    Es lo que la contraparte necesita para ayudar a los estudiantes a completar su postulación.
+   *  - lista ({{lista_estudiantes}}): solo los nombres de los que siguen en el proceso, sin Id
+   *    ni etapa. Es la que va en la invitación a postular (junto con el enlace al formulario).
    */
-  private async estudiantesPorLiceo(liceoIds: string[], procesoId: string): Promise<Map<string, string>> {
+  private async estudiantesPorLiceo(liceoIds: string[], procesoId: string): Promise<{ detalle: Map<string, string>; lista: Map<string, string> }> {
     const filasE = await this.ds.query(
       `SELECT p.liceo_id, p.codigo, p.curso, p.estado, p.confirmacion, et.nombre AS etapa, et.orden,
               pe.nombres, pe.apellido_paterno, pe.apellido_materno,
@@ -198,7 +202,13 @@ export class EnviosService {
         ORDER BY p.correlativo`,
       [procesoId, liceoIds]);
     const porLiceo = new Map<string, string[]>();
+    const nombresPorLiceo = new Map<string, { orden: string; linea: string }[]>();
     for (const r of filasE) {
+      if (!ESTADOS_FUERA.includes(r.estado)) {
+        const completo = [r.nombres, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ');
+        if (!nombresPorLiceo.has(r.liceo_id)) nombresPorLiceo.set(r.liceo_id, []);
+        nombresPorLiceo.get(r.liceo_id)!.push({ orden: `${r.apellido_paterno} ${r.apellido_materno ?? ''} ${r.nombres}`, linea: `• ${completo}` });
+      }
       const nombre = `${r.apellido_paterno}${r.apellido_materno ? ' ' + r.apellido_materno : ''}, ${r.nombres}`;
       let situacion: string;
       if (r.estado === 'DESISTIO') situacion = 'No aceptó la invitación.';
@@ -213,16 +223,24 @@ export class EnviosService {
       if (!porLiceo.has(r.liceo_id)) porLiceo.set(r.liceo_id, []);
       porLiceo.get(r.liceo_id)!.push(linea);
     }
-    const out = new Map<string, string>();
-    for (const id of liceoIds) out.set(id, porLiceo.get(id)?.join('\n') ?? '(Este liceo aún no tiene estudiantes invitados.)');
-    return out;
+    const detalle = new Map<string, string>();
+    const lista = new Map<string, string>();
+    for (const id of liceoIds) {
+      detalle.set(id, porLiceo.get(id)?.join('\n') ?? '(Este liceo aún no tiene estudiantes invitados.)');
+      const nombres = (nombresPorLiceo.get(id) ?? []).sort((a, b) => a.orden.localeCompare(b.orden, 'es'));
+      lista.set(id, nombres.length ? nombres.map((n) => n.linea).join('\n') : '(Este liceo aún no tiene estudiantes invitados.)');
+    }
+    return { detalle, lista };
   }
 
-  /** Agrega el texto de {{estudiantes}} a cada destinatario-liceo si la plantilla lo usa. */
+  /** Agrega {{estudiantes}} y {{lista_estudiantes}} a cada destinatario-liceo si la plantilla los usa. */
   private async completarEstudiantes(s: SolicitudEnvio, grupo: Grupo, destinatarios: Destinatario[], procesoId: string) {
-    if (grupo === 'POSTULANTES' || !/\{\{\s*estudiantes\s*\}\}/i.test(s.asunto + s.cuerpo)) return;
-    const mapa = await this.estudiantesPorLiceo(destinatarios.map((d) => d.liceoId!).filter(Boolean), procesoId);
-    for (const d of destinatarios) d.estudiantes = mapa.get(d.liceoId!) ?? '';
+    if (grupo === 'POSTULANTES' || !/\{\{\s*(lista_)?estudiantes\s*\}\}/i.test(s.asunto + s.cuerpo)) return;
+    const { detalle, lista } = await this.estudiantesPorLiceo(destinatarios.map((d) => d.liceoId!).filter(Boolean), procesoId);
+    for (const d of destinatarios) {
+      d.estudiantes = detalle.get(d.liceoId!) ?? '';
+      d.listaEstudiantes = lista.get(d.liceoId!) ?? '';
+    }
   }
 
   /** Agrega {{documentos_pendientes}} a cada estudiante si el correo lo usa. */
@@ -251,7 +269,7 @@ export class EnviosService {
   private renderizar(d: Destinatario, s: SolicitudEnvio, comunes: Record<string, string>) {
     const vars = {
       ...comunes, nombre: d.nombre, cargo: d.cargo ?? '', liceo: d.liceo, codigo: d.codigo ?? '', curso: d.curso ?? '',
-      estudiantes: d.estudiantes ?? '', documentos_pendientes: d.pendientes ?? '',
+      estudiantes: d.estudiantes ?? '', lista_estudiantes: d.listaEstudiantes ?? '', documentos_pendientes: d.pendientes ?? '',
     };
     return { asunto: reemplazarVariables(s.asunto, vars), cuerpo: reemplazarVariables(s.cuerpo, vars) };
   }
@@ -270,8 +288,8 @@ export class EnviosService {
     if (grupo !== 'POSTULANTES' && /\{\{\s*(codigo|curso)\s*\}\}/i.test(s.cuerpo + s.asunto)) {
       advertencias.push('{{codigo}} y {{curso}} solo tienen valor en correos a estudiantes.');
     }
-    if (grupo === 'POSTULANTES' && /\{\{\s*estudiantes\s*\}\}/i.test(s.cuerpo + s.asunto)) {
-      advertencias.push('{{estudiantes}} solo tiene valor en correos a liceos.');
+    if (grupo === 'POSTULANTES' && /\{\{\s*(lista_)?estudiantes\s*\}\}/i.test(s.cuerpo + s.asunto)) {
+      advertencias.push('{{estudiantes}} y {{lista_estudiantes}} solo tienen valor en correos a liceos.');
     }
     return {
       grupo,

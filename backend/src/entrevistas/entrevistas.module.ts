@@ -16,6 +16,7 @@ import { ArchivosService, TAMANO_MAXIMO } from '../common/archivos.service';
 import { filas } from '../common/sql';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 import { DatosPauta, empaquetarPautas, generarPauta } from './pauta-docx';
+import { textoRsh } from '../common/rsh';
 
 export const ESTADOS_ENTREVISTA = ['POR_SOLICITAR', 'SOLICITADA', 'CONFIRMADA', 'REALIZADA', 'CANCELADA', 'CONFLICTO'] as const;
 type EstadoEntrevista = (typeof ESTADOS_ENTREVISTA)[number];
@@ -153,10 +154,8 @@ export class EntrevistasService {
         ORDER BY en.fecha_hora NULLS LAST, p.correlativo`,
       [etapaId, procesoId, ids ?? null]);
     return filas.map((x: any) => {
-      // Tramo: lo digitado en la ficha; si no hay, lo que traía el Excel del ranking ("40%", "P").
-      const tramo = x.rsh_pendiente ? 'Pendiente'
-        : x.tramo_rsh ? `${x.tramo_rsh}%`
-        : x.ranking_rsh ? (String(x.ranking_rsh).toUpperCase() === 'P' ? 'Pendiente' : String(x.ranking_rsh)) : null;
+      // RSH: el del Excel del ranking; si no hay, lo que se digitó antes en la ficha.
+      const tramo = textoRsh(x.ranking_rsh, x.tramo_rsh, x.rsh_pendiente);
       return {
         id: x.id,
         codigo: x.codigo,
@@ -205,7 +204,7 @@ export class EntrevistasService {
       if (!d.fechaHora) faltan.push('Sin fecha de entrevista');
       if (d.posicionNotas == null) faltan.push('Sin posición en notas');
       if (d.rankingPreseleccion == null) faltan.push('Sin ranking');
-      if (!d.tramoRsh) faltan.push('Sin tramo RSH');
+      if (!d.tramoRsh) faltan.push('Sin RSH');
       if (d.personasHogar == null) faltan.push('Sin personas del hogar');
       if (!d.ingresoMensual) faltan.push('Sin ingreso mensual');
       return {

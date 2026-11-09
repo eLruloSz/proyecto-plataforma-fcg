@@ -69,7 +69,11 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
     if (!p) return;
     setAsunto(p.asunto); setCuerpo(p.cuerpo); setProposito(p.proposito);
     setAdjuntos(p.adjuntos.map((a) => ({ id: a.id, nombre: a.nombre })));
-    if (p.proposito === 'INVITACION_ESTUDIANTES' && !filtro) setGrupo('POSTULANTES');
+    // Invitación: si la plantilla trae el listado de estudiantes va a las contrapartes de los liceos;
+    // si no, a cada estudiante.
+    if (p.proposito === 'INVITACION_ESTUDIANTES' && !filtro) {
+      setGrupo(/\{\{\s*(lista_)?estudiantes\s*\}\}/i.test(p.asunto + p.cuerpo) ? 'CONTRAPARTES' : 'POSTULANTES');
+    }
   };
 
   const insertarVariable = (v: string) => {

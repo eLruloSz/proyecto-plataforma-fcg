@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { tipoEtapa } from '../dashboard/tareas.service';
 import { agregarHoja, colDia, colFecha, Columna, crearLibro, nombreArchivo, nombreHoja } from './excel-util';
+import { textoRsh } from '../common/rsh';
 
 /**
  * Exportaciones a Excel.
@@ -32,12 +33,9 @@ const ESTADO_ENTREVISTA: Record<string, string | undefined> = {
   REALIZADA: 'Realizada', CANCELADA: 'Cancelada', CONFLICTO: 'Con conflicto',
 };
 
-/** Misma regla que usa la pauta en Word: lo digitado en la ficha; si no hay, lo que traía el ranking. */
+/** Misma regla que usa la pauta en Word: el RSH del Excel del ranking; si no hay, lo digitado antes en la ficha. */
 function tramoRsh(x: Fila): string | null {
-  if (x.rsh_pendiente) return 'Pendiente';
-  if (x.tramo_rsh) return `${x.tramo_rsh}%`;
-  if (x.ranking_rsh) return String(x.ranking_rsh).toUpperCase() === 'P' ? 'Pendiente' : String(x.ranking_rsh);
-  return null;
+  return textoRsh(x.ranking_rsh, x.tramo_rsh, x.rsh_pendiente);
 }
 
 /** Cómo va el estudiante en el proceso (mismas etiquetas que ve la fundación en pantalla). */
@@ -176,7 +174,7 @@ export class ExportacionService {
     if (nivel >= 3) {
       // Siguientes etapas: ficha RSH y posición en el ranking (solo lectura).
       col.push(
-        { titulo: 'Tramo RSH', valor: tramoRsh, ancho: 10 },
+        { titulo: 'RSH', valor: tramoRsh, ancho: 10 },
         { titulo: 'Personas del hogar (cartola)', valor: (f) => f.personas_hogar, ancho: 12 },
         { titulo: 'Personas del hogar (formulario)', valor: (f) => f.personas_formulario, ancho: 12 },
         { titulo: 'Menores de 18', valor: (f) => f.menores_18, ancho: 9 },
@@ -289,7 +287,7 @@ export class ExportacionService {
       { titulo: 'Estado del envío', valor: (f) => ENTREGA[f.invitacion_entrega] ?? null, ancho: 12 },
       { titulo: 'Respuesta a la invitación', valor: (f) => RESPUESTA[f.confirmacion] ?? null, ancho: 13 },
       colFecha('Fecha de la respuesta', (f) => f.confirmacion_en),
-      { titulo: 'Tramo RSH', valor: tramoRsh, ancho: 10 },
+      { titulo: 'RSH', valor: tramoRsh, ancho: 10 },
       { titulo: 'Personas del hogar (cartola)', valor: (f) => f.personas_hogar, ancho: 12 },
       { titulo: 'Personas del hogar (formulario)', valor: (f) => f.personas_formulario, ancho: 12 },
       { titulo: 'Menores de 18', valor: (f) => f.menores_18, ancho: 9 },
