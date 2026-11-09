@@ -54,6 +54,12 @@ export class AvanceController {
     return this.svc.sugerirDesdeConfirmacion(etapaId, u.id);
   }
 
+  @Post('sugerir-desde-asistencia')
+  @HttpCode(200)
+  sugerirAsistencia(@Param('etapaId', ParseUUIDPipe) etapaId: string, @Usuario() u: UsuarioSesion) {
+    return this.svc.sugerirDesdeAsistencia(etapaId, u.id);
+  }
+
   @Put('estudiantes/:postulacionId/entrevista')
   entrevista(
     @Param('etapaId', ParseUUIDPipe) etapaId: string,

@@ -5,7 +5,7 @@ import { Caja, Etiqueta, Modal, useAviso } from '../ui';
 
 const NOMBRES_CAMPO: Record<CampoFormulario, string> = {
   nombre: 'Nombre completo', apellido1: 'Apellido paterno (si va aparte)', apellido2: 'Apellido materno (si va aparte)',
-  rut: 'RUT', liceo: 'Liceo', email: 'Email', telefono: 'Teléfono',
+  rut: 'RUT', liceo: 'Liceo', email: 'Email', telefono: 'Teléfono', acepta: '¿Acepta postular?',
 };
 const CAMPOS = Object.keys(NOMBRES_CAMPO) as CampoFormulario[];
 
@@ -16,6 +16,8 @@ interface Decision {
   email: Uso | 'sugerido';
   telefono: Uso;
   rut: Uso;
+  /** Cargar la respuesta a "¿Aceptas postular?" en la columna "Aceptó postular". */
+  acepta: boolean;
 }
 
 /**
@@ -30,12 +32,14 @@ function decisionInicial(f: FilaFormulario): Decision {
     email: f.sugerenciaEmail ? 'sugerido' : 'nuevo',
     telefono: telefonoDudoso && f.invitado?.telefono ? 'anterior' : 'nuevo',
     rut: 'nuevo',
+    acepta: !!f.limpio.confirmacion,
   };
 }
 
 /**
  * Subir el Excel de respuestas del formulario de Microsoft Forms, revisar a qué
- * invitado corresponde cada respuesta y guardar email, teléfono y RUT.
+ * invitado corresponde cada respuesta y guardar email, teléfono, RUT y si acepta
+ * postular (llena la columna "Aceptó postular").
  */
 export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado[]; onCerrar: () => void }) {
   const qc = useQueryClient();
@@ -70,11 +74,12 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
     const d = decisiones[f.fila];
     if (!d?.incluir || !d.invitadoId) return [];
     const inv = porId.get(d.invitadoId);
-    const c: { invitadoId: string; email?: string; telefono?: string; rut?: string } = { invitadoId: d.invitadoId };
+    const c: { invitadoId: string; email?: string; telefono?: string; rut?: string; confirmacion?: 'CONFIRMADO' | 'RECHAZADO' } = { invitadoId: d.invitadoId };
     const email = d.email === 'sugerido' ? f.sugerenciaEmail : f.limpio.email;
     if (email && d.email !== 'anterior' && email !== inv?.email) c.email = email;
     if (f.limpio.telefono && d.telefono === 'nuevo' && f.limpio.telefono !== inv?.telefono) c.telefono = f.limpio.telefono;
     if (f.limpio.rut && d.rut === 'nuevo' && f.limpio.rut !== inv?.rut) c.rut = f.limpio.rut;
+    if (f.limpio.confirmacion && d.acepta && f.limpio.confirmacion !== inv?.confirmacion) c.confirmacion = f.limpio.confirmacion;
     return Object.keys(c).length > 1 ? [c] : [];
   }), [filas, decisiones, porId]);
 
@@ -90,8 +95,8 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
   const guardar = useMutation({
     mutationFn: () => api.post<{ actualizados: number }>('/invitados/importar-contactos', { cambios }),
     onSuccess: (r) => {
-      ['invitados', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      avisar(`Datos de contacto actualizados en ${r.actualizados} invitados`);
+      ['invitados', 'dashboard', 'avance', 'tareas', 'proceso'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      avisar(`Datos actualizados en ${r.actualizados} invitados`);
       onCerrar();
     },
     onError: (e: Error) => avisar(e.message, 'error'),
@@ -111,6 +116,7 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
           <p>
             Sube el Excel con las respuestas del formulario de <strong>Microsoft Forms</strong>. El sistema busca a qué invitado
             corresponde cada respuesta (por RUT o por liceo y nombre) y te muestra qué datos cambiarían antes de guardar.
+            Si el formulario pregunta si acepta postular, esa respuesta llena sola la columna <strong>“Aceptó postular”</strong>.
           </p>
           <Caja tono="azul" titulo="¿Cómo descargo el Excel?">
             En Microsoft Forms abre el formulario → pestaña <em>Respuestas</em> → <em>Abrir resultados en Excel</em>. Si se abre en el
@@ -185,6 +191,12 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
             (<button className="underline" onClick={() => setVerColumnas(true)}>elegirla</button>).
           </Caja>
         )}
+        {!verColumnas && !previa.mapeo.acepta && (
+          <p className="text-xs text-gray-500">
+            No se encontró una pregunta de tipo “¿Aceptas postular?” (Sí/No), así que no se cargará “Aceptó postular”.{' '}
+            <button className="underline" onClick={() => setVerColumnas(true)}>Elegir la columna</button>
+          </p>
+        )}
 
         <div className="flex gap-1 text-sm" role="group" aria-label="Filtrar respuestas">
           {([['todas', `Todas (${filas.length})`], ['revisar', `Para revisar (${paraRevisar})`], ['sin-calce', `Sin calce (${r.sinCalce})`]] as const).map(([k, t]) => (
@@ -198,7 +210,7 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
             <thead>
               <tr>
                 <th className="w-8" /><th>Respuesta del formulario</th><th className="min-w-[230px]">Invitado</th>
-                <th>Email</th><th>Teléfono</th><th>RUT</th>
+                <th>Email</th><th>Teléfono</th><th>RUT</th>{previa.mapeo.acepta && <th>Aceptó postular</th>}
               </tr>
             </thead>
             <tbody>
@@ -246,6 +258,10 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
                       original={f.respuesta.telefono} onUso={(u) => cambiar(f.fila, { telefono: u as Uso })} /></td>
                     <td><CeldaDato nuevo={f.limpio.rut} anterior={inv?.rut ?? null} uso={d.rut}
                       original={f.respuesta.rut} onUso={(u) => cambiar(f.fila, { rut: u as Uso })} /></td>
+                    {previa.mapeo.acepta && (
+                      <td><CeldaAcepta nuevo={f.limpio.confirmacion} anterior={inv?.confirmacion ?? null} original={f.respuesta.acepta}
+                        marcado={d.acepta} onMarcar={(v) => cambiar(f.fila, { acepta: v })} /></td>
+                    )}
                   </tr>
                 );
               })}
@@ -284,5 +300,27 @@ function CeldaDato({ nuevo, anterior, uso, sugerencia, original, onUso }: {
         </label>
       ))}
     </div>
+  );
+}
+
+const TEXTO_CONFIRMACION = { CONFIRMADO: 'Sí', RECHAZADO: 'No', PENDIENTE: 'Sin respuesta' } as const;
+
+/** "Aceptó postular": lo que respondió en el formulario y lo que había antes. */
+function CeldaAcepta({ nuevo, anterior, original, marcado, onMarcar }: {
+  nuevo: 'CONFIRMADO' | 'RECHAZADO' | null; anterior: keyof typeof TEXTO_CONFIRMACION | null; original: string | null;
+  marcado: boolean; onMarcar: (v: boolean) => void;
+}) {
+  if (!nuevo) {
+    return original
+      ? <div className="min-w-[110px] text-xs"><div className="text-red-700 line-through">{original}</div><div className="text-gray-400">no se carga</div></div>
+      : <span className="text-xs text-gray-300">—</span>;
+  }
+  const etiqueta = <Etiqueta tono={nuevo === 'CONFIRMADO' ? 'verde' : 'rojo'}>{TEXTO_CONFIRMACION[nuevo]}</Etiqueta>;
+  if (nuevo === anterior) return <div className="min-w-[110px] text-xs">{etiqueta} <span className="text-gray-400">sin cambios</span></div>;
+  return (
+    <label className="flex min-w-[130px] cursor-pointer items-start gap-1.5 text-xs">
+      <input type="checkbox" className="mt-0.5" checked={marcado} onChange={(e) => onMarcar(e.target.checked)} />
+      <span>{etiqueta}{anterior && <span className="block text-gray-400">antes: {TEXTO_CONFIRMACION[anterior]}</span>}</span>
+    </label>
   );
 }

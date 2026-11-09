@@ -5,13 +5,14 @@ import { AuditoriaService } from '../common/auditoria.service';
 import { normalizarRut } from '../common/rut';
 import { normalizar } from '../nominas/parser';
 import {
-  CAMPOS, leerRespuestas, limpiarEmail, limpiarTelefono, Mapeo, palabrasNombre, puntajeNombre,
+  CAMPOS, interpretarAcepta, leerRespuestas, limpiarEmail, limpiarTelefono, Mapeo, palabrasNombre, puntajeNombre,
 } from './respuestas-formulario';
 
 interface InvitadoBase {
   id: string; codigo: string; nombres: string; apellido_paterno: string; apellido_materno: string | null;
   liceo_id: string; liceo_codigo: string; liceo: string;
   persona_id: string; email: string | null; telefono: string | null; rut: string | null;
+  confirmacion: 'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
 }
 
 export interface CambioContacto {
@@ -19,11 +20,13 @@ export interface CambioContacto {
   email?: string | null;
   telefono?: string | null;
   rut?: string | null;
+  /** Respuesta a "¿Aceptas postular?": llena la columna "Aceptó postular". */
+  confirmacion?: 'CONFIRMADO' | 'RECHAZADO';
 }
 
 /**
  * Importa el Excel de respuestas del formulario (Microsoft Forms) para cargar
- * email, teléfono y RUT de los invitados sin escribirlos a mano.
+ * email, teléfono, RUT y si acepta postular, sin escribirlos a mano.
  *
  *   1. previsualizar: lee el archivo, calza cada respuesta con un invitado y
  *      muestra qué cambiaría. No guarda nada.
@@ -62,7 +65,7 @@ export class ImportarContactosService {
     const invitados: InvitadoBase[] = await this.ds.query(
       `SELECT p.id, p.codigo, pe.nombres, pe.apellido_paterno, pe.apellido_materno,
               l.id AS liceo_id, l.codigo AS liceo_codigo, l.nombre AS liceo,
-              pe.id AS persona_id, pe.email, pe.telefono, pe.rut
+              pe.id AS persona_id, pe.email, pe.telefono, pe.rut, p.confirmacion
          FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id JOIN liceos l ON l.id = p.liceo_id
         WHERE p.proceso_id = $1
         ORDER BY p.correlativo`, [procesoId]);
@@ -73,7 +76,7 @@ export class ImportarContactosService {
 
     const resumen = (i: InvitadoBase) => ({
       id: i.id, codigo: i.codigo, nombre: `${i.nombres} ${i.apellido_paterno} ${i.apellido_materno ?? ''}`.trim(),
-      liceo: `${i.liceo_codigo}. ${i.liceo}`, email: i.email, telefono: i.telefono, rut: i.rut,
+      liceo: `${i.liceo_codigo}. ${i.liceo}`, email: i.email, telefono: i.telefono, rut: i.rut, confirmacion: i.confirmacion,
     });
 
     const filas = lectura.respuestas.map((r) => {
@@ -85,6 +88,8 @@ export class ImportarContactosService {
       if (tel.aviso) avisos.push(`Revisa: ${tel.aviso}.`);
       const rut = r.rut ? normalizarRut(r.rut) : null;
       if (r.rut && !rut) avisos.push(`El RUT "${r.rut}" no es válido: no se carga.`);
+      const confirmacion = interpretarAcepta(r.acepta);
+      if (r.acepta && !confirmacion) avisos.push(`No se entendió la respuesta "${r.acepta}" a si acepta postular: no se carga.`);
 
       const liceo = this.reconocerLiceo(r.liceo, liceos);
       if (r.liceo && !liceo) avisos.push(`No se reconoció el liceo "${r.liceo}"; se buscó en todos.`);
@@ -118,7 +123,7 @@ export class ImportarContactosService {
       return {
         fila: r.fila,
         respuesta: r,
-        limpio: { email: email.email, telefono: tel.telefono, rut },
+        limpio: { email: email.email, telefono: tel.telefono, rut, confirmacion },
         sugerenciaEmail: email.sugerencia ?? null,
         liceo: liceo ? `${liceo.codigo}. ${liceo.nombre}` : null,
         calce, metodo,
@@ -166,7 +171,7 @@ export class ImportarContactosService {
     };
   }
 
-  /** Guarda email, teléfono y RUT de los invitados elegidos en la pantalla. Todo o nada. */
+  /** Guarda email, teléfono, RUT y "Aceptó postular" de los invitados elegidos en la pantalla. Todo o nada. */
   async confirmar(cambios: CambioContacto[], usuarioId: string) {
     const procesoId = await this.proceso.id();
     const ids = cambios.map((c) => c.invitadoId);
@@ -193,13 +198,26 @@ export class ImportarContactosService {
         if (c.rut && !r) errores.push(`${p.codigo}: el RUT "${c.rut}" no es válido.`);
         datos.rut = r;
       }
-      return { persona_id: p.persona_id, datos };
+      return { postulacion_id: c.invitadoId, persona_id: p.persona_id, datos, confirmacion: c.confirmacion };
     });
     if (errores.length) throw new BadRequestException(errores.join(' '));
 
     await this.ds.transaction(async (em) => {
       for (const x of listos) {
         const d = x!.datos;
+        // "Aceptó postular": igual que al cambiarlo a mano en Invitados. El estado
+        // solo se mueve mientras la persona sigue en la etapa de invitación.
+        if (x!.confirmacion) {
+          await em.query(
+            `UPDATE postulaciones SET
+               confirmacion = $2,
+               confirmacion_en = CASE WHEN confirmacion = $2 THEN confirmacion_en ELSE NOW() END,
+               estado = CASE WHEN estado IN ('INVITADO', 'CONFIRMADO', 'DESISTIO')
+                             THEN CASE $2 WHEN 'CONFIRMADO' THEN 'CONFIRMADO' ELSE 'DESISTIO' END
+                             ELSE estado END
+             WHERE id = $1`,
+            [x!.postulacion_id, x!.confirmacion]);
+        }
         if (!Object.keys(d).length) continue;
         // Consulta fija: cada columna se actualiza solo si viene en el cambio
         // ($2/$4/$6 = true). Nada del request se concatena al SQL.
@@ -219,7 +237,8 @@ export class ImportarContactosService {
           throw e;
         }
       }
-      await this.auditoria.registrar(usuarioId, 'IMPORTAR_CONTACTOS', 'postulaciones', null, { invitados: ids.length }, em);
+      await this.auditoria.registrar(usuarioId, 'IMPORTAR_CONTACTOS', 'postulaciones', null,
+        { invitados: ids.length, respuestasPostular: listos.filter((x) => x!.confirmacion).length }, em);
     });
     return { actualizados: listos.length };
   }

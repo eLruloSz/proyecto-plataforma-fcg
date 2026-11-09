@@ -118,8 +118,19 @@ function AvisoConsulta() {
   );
 }
 
+/** Recordatorio para las cuentas de solo lectura (el backend igual bloquea cualquier cambio). */
+function AvisoSoloLectura() {
+  const { soloLectura } = useSesion();
+  if (!soloLectura) return null;
+  return (
+    <div className="border-b border-blue-200 bg-blue-50 px-6 py-1.5 text-xs text-blue-900">
+      Cuenta de <strong>solo lectura</strong>: puedes ver toda la información del proceso, pero no modificarla.
+    </div>
+  );
+}
+
 export function Layout() {
-  const { usuario, salir } = useSesion();
+  const { usuario, salir, soloLectura } = useSesion();
   const { data: proceso } = useProceso();
   const [vistaId, setVistaId] = useState<string | null>(leerVista);
 
@@ -174,11 +185,16 @@ export function Layout() {
           <div className="border-t border-gray-200 p-3 text-xs">
             <NavLink to="/perfil" className="block truncate font-medium text-gray-800 hover:underline">{usuario?.nombre}</NavLink>
             <div className="truncate text-gray-500">{usuario?.email}</div>
-            <button onClick={salir} className="mt-2 text-gray-500 hover:text-gray-900">Cerrar sesión</button>
+            {soloLectura && <div className="mt-1 text-[11px] font-medium text-blue-700">Solo lectura</div>}
+            <div className="mt-2 flex gap-3">
+              {!soloLectura && <NavLink to="/usuarios" className={({ isActive }) => isActive ? 'font-semibold text-gray-900' : 'text-gray-500 hover:text-gray-900'}>Usuarios</NavLink>}
+              <button onClick={salir} className="text-gray-500 hover:text-gray-900">Cerrar sesión</button>
+            </div>
           </div>
         </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur-sm"><BarraEtapas /></div>
+          <AvisoSoloLectura />
           <AvisoConsulta />
           <div className="min-h-0 flex-1 overflow-y-auto p-6"><Outlet /></div>
         </main>

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { api } from '../api';
+import { api, RespuestaSesion } from '../api';
 import { useSesion } from '../sesion';
 import { useAviso } from '../ui';
 
 export function Perfil() {
-  const { usuario, refrescar } = useSesion();
+  const { usuario, refrescar, usarToken } = useSesion();
   const avisar = useAviso();
   const [nombre, setNombre] = useState(usuario?.nombre ?? '');
   const [firma, setFirma] = useState(usuario?.firma ?? '');
@@ -18,14 +18,22 @@ export function Perfil() {
     onError: (e: Error) => avisar(e.message, 'error'),
   });
   const cambiar = useMutation({
-    mutationFn: () => api.post('/auth/yo/password', { actual: pw.actual, nueva: pw.nueva }),
-    onSuccess: () => { setPw({ actual: '', nueva: '', repetir: '' }); avisar('Contraseña actualizada'); },
+    mutationFn: () => api.post<RespuestaSesion>('/auth/yo/password', { actual: pw.actual, nueva: pw.nueva }),
+    // Cambiar la clave cierra las demás sesiones; esta sigue con el token nuevo.
+    onSuccess: async (r) => {
+      await usarToken(r.token);
+      setPw({ actual: '', nueva: '', repetir: '' });
+      avisar('Contraseña actualizada. Se cerraron tus sesiones en otros equipos.');
+    },
     onError: (e: Error) => setErrorPw(e.message),
   });
 
   return (
     <div className="max-w-xl space-y-6">
-      <h1 className="titulo">Mi perfil</h1>
+      <div>
+        <h1 className="titulo">Mi perfil</h1>
+        <p className="text-sm text-gray-500">{usuario?.email} · {usuario?.rol === 'LECTOR' ? 'Solo lectura' : 'Equipo'}</p>
+      </div>
       <div className="tarjeta space-y-3 p-5">
         <div><label className="label" htmlFor="nom">Nombre</label><input id="nom" className="input" value={nombre} onChange={(e) => setNombre(e.target.value)} /></div>
         <div>

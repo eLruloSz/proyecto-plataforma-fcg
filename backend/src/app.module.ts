@@ -18,6 +18,7 @@ import { AvanceModule } from './avance/avance.module';
 import { PreseleccionModule } from './preseleccion/preseleccion.module';
 import { EntrevistasModule } from './entrevistas/entrevistas.module';
 import { GeneracionesModule } from './generaciones/generaciones.module';
+import { UsuariosModule } from './usuarios/usuarios.module';
 
 /**
  * TLS hacia PostgreSQL. Se valida siempre el certificado del servidor
@@ -58,6 +59,7 @@ function opcionesSsl(cfg: ConfigService) {
     PreseleccionModule,
     EntrevistasModule,
     GeneracionesModule,
+    UsuariosModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

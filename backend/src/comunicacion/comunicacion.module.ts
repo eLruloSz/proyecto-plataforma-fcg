@@ -180,5 +180,6 @@ export class WebhooksController {
 @Module({
   controllers: [ComunicacionController, WebhooksController],
   providers: [PlantillasService, EnviosService, MailerService],
+  exports: [MailerService],
 })
 export class ComunicacionModule {}

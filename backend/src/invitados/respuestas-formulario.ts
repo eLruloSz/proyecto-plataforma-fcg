@@ -13,8 +13,8 @@ import { normalizarRut } from '../common/rut';
  * los valores, y se pueden corregir a mano desde la pantalla.
  */
 
-export type Campo = 'nombre' | 'apellido1' | 'apellido2' | 'rut' | 'liceo' | 'email' | 'telefono';
-export const CAMPOS: Campo[] = ['nombre', 'apellido1', 'apellido2', 'rut', 'liceo', 'email', 'telefono'];
+export type Campo = 'nombre' | 'apellido1' | 'apellido2' | 'rut' | 'liceo' | 'email' | 'telefono' | 'acepta';
+export const CAMPOS: Campo[] = ['nombre', 'apellido1', 'apellido2', 'rut', 'liceo', 'email', 'telefono', 'acepta'];
 export type Mapeo = Partial<Record<Campo, number | null>>;
 
 export interface RespuestaLeida {
@@ -24,6 +24,8 @@ export interface RespuestaLeida {
   liceo: string | null;
   email: string | null;
   telefono: string | null;
+  /** Respuesta a "¿Aceptas postular?" tal como viene (Sí / No / ...). */
+  acepta: string | null;
 }
 
 export interface LecturaRespuestas {
@@ -92,8 +94,9 @@ export async function leerRespuestas(buffer: Buffer, mapeo?: Mapeo): Promise<Lec
       liceo: leer('liceo'),
       email: leer('email'),
       telefono: leer('telefono'),
+      acepta: leer('acepta'),
     };
-    if (fila.nombre || fila.rut || fila.email || fila.telefono) respuestas.push(fila);
+    if (fila.nombre || fila.rut || fila.email || fila.telefono || fila.acepta) respuestas.push(fila);
   }
   return { hoja: ws.name, columnas, mapeo: m, respuestas };
 }
@@ -140,6 +143,14 @@ export function detectarColumnas(
   });
   mapeo.liceo = elegir(({ t }) => (tiene(t, 'liceo', 'colegio', 'establecimiento', 'escuela', 'institucion') ? 3 : 0));
 
+  // ¿Acepta postular? Título con "acept", "postular", "interés"... y respuestas de tipo Sí/No
+  // (así no se confunde con una pregunta abierta como "¿Por qué quieres postular?").
+  mapeo.acepta = elegir(({ indice, t }) => {
+    const porTitulo = tiene(t, 'acept', 'postular', 'interes', 'confirm', 'particip') ? 3 : 0;
+    const siNo = proporcion(indice, (v) => interpretarAcepta(v) !== null);
+    return porTitulo && siNo >= 0.6 ? porTitulo + 2 * siNo : 0;
+  });
+
   // Nombre: una columna "nombre completo", o nombres + apellidos por separado.
   const apP = columnas.find((c) => /apellido.*(paterno|1)|primer apellido/.test(normalizar(c.titulo)));
   const apM = columnas.find((c) => /apellido.*(materno|2)|segundo apellido/.test(normalizar(c.titulo)));
@@ -152,6 +163,18 @@ export function detectarColumnas(
   });
   for (const c of CAMPOS) if (mapeo[c] === undefined) mapeo[c] = null;
   return mapeo;
+}
+
+/**
+ * "Sí", "Si, acepto postular", "Acepto" → CONFIRMADO; "No", "No acepto" → RECHAZADO.
+ * Cualquier otra cosa → null (no se carga y se avisa).
+ */
+export function interpretarAcepta(v: string | null): 'CONFIRMADO' | 'RECHAZADO' | null {
+  if (!v) return null;
+  const t = normalizar(v).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(no|rechazo|no acepto)\b/.test(t)) return 'RECHAZADO';
+  if (/^(si|acepto|yes|confirmo|me interesa)\b/.test(t)) return 'CONFIRMADO';
+  return null;
 }
 
 // ---------------------------------------------------------------------------

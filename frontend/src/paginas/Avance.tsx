@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, CargaRanking, VistaAvance } from '../api';
+import { api, CargaRanking, Encuentro, Invitado, VistaAvance } from '../api';
 import { useProceso } from '../Layout';
 import { tipoEtapa, useEtapa } from '../etapa';
 import { TerminarEtapa } from './TerminarEtapa';
-import { FechasEncuentro, fechaEncuentro, useEncuentros } from './Encuentro';
+import { FechasEncuentro, fechaEncuentro, InscribirEnBloque, RegistrarAsistencia, useEncuentros } from './Encuentro';
+import { ImportarContactos } from './ImportarContactos';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
 import { CeldaFicha, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
@@ -13,6 +14,8 @@ import { ESTADOS } from './Entrevistas';
 
 type Fila = VistaAvance['estudiantes'][number];
 type Filtro = 'todos' | 'sin-decidir' | 'faltan' | 'pasa' | 'no-pasa' | 'confirmados';
+/** Encuentro online: filtro por asistencia ('' = todos). */
+type FiltroAsistencia = '' | 'si' | 'no' | 'sin-registrar';
 
 /** Cómo se llama el trabajo de cada etapa y qué se hace en ella. */
 const TITULOS: Record<string, string> = {
@@ -20,7 +23,7 @@ const TITULOS: Record<string, string> = {
 };
 const AYUDA: Record<string, string> = {
   INVITACION: 'Marca quién sigue a la etapa siguiente según su respuesta a la invitación.',
-  ENCUENTRO: 'Inscribe a cada estudiante en una fecha del encuentro, marca su asistencia y quién avanza.',
+  ENCUENTRO: 'Inscribe a los estudiantes en una fecha del encuentro, registra la asistencia (solo marcas a los que no asistieron) y quién avanza.',
   PRESELECCION: 'Revisa documentos, completa la ficha RSH, sube el ranking y marca quién avanza.',
   ENTREVISTA: 'Después de las entrevistas, marca quién avanza.',
   GENERAL: 'Marca quién avanza y quién no.',
@@ -103,12 +106,20 @@ export function Avance() {
   const [subiendoRanking, setSubiendoRanking] = useState(false);
   const [marcandoRanking, setMarcandoRanking] = useState(false);
   const [terminando, setTerminando] = useState<{ mensaje?: string } | null>(null);
+  // Encuentro online (etapa 2). fechaFiltro: '' = todas, 'sin' = sin fecha, o el id de una fecha.
+  const [fechaFiltro, setFechaFiltro] = useState('');
+  const [asistenciaFiltro, setAsistenciaFiltro] = useState<FiltroAsistencia>('');
+  const [asistenciaDe, setAsistenciaDe] = useState<Encuentro | null>(null);
+  const [inscribiendo, setInscribiendo] = useState(false);
+  const [importando, setImportando] = useState(false);
   // Preselección N°1: ficha de postulación y ranking.
   const esPre = v?.etapa.clave === 'PRESELECCION';
   const esEntrevista = ['ENTREVISTA', 'ENTREVISTA_COMITE'].includes(v?.etapa.clave ?? '');
   const esEncuentro = v?.etapa.clave === 'ENCUENTRO';
   const { data: encuentros } = useEncuentros();
   const { data: ranking } = useQuery({ queryKey: ['ranking'], queryFn: () => api.get<CargaRanking>('/ranking'), enabled: esPre });
+  // La importación del Excel del formulario necesita la lista de invitados.
+  const { data: invitados } = useQuery({ queryKey: ['invitados'], queryFn: () => api.get<Invitado[]>('/invitados'), enabled: importando });
 
   const refrescar = () => CLAVES.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const error409 = (e: Error) => avisar(e.message, 'error');
@@ -132,6 +143,10 @@ export function Avance() {
   const sugerir = useMutation({
     mutationFn: () => api.post<{ marcados: number }>(`/avance/${etapaId}/sugerir-desde-confirmacion`),
     onSuccess: (r) => { avisar(r.marcados ? `${r.marcados} marcados según su respuesta a la invitación` : 'No había estudiantes nuevos para marcar', 'info'); refrescar(); },
+  });
+  const sugerirAsistencia = useMutation({
+    mutationFn: () => api.post<{ marcados: number }>(`/avance/${etapaId}/sugerir-desde-asistencia`),
+    onSuccess: (r) => { avisar(r.marcados ? `${r.marcados} marcados según su asistencia` : 'No había estudiantes nuevos para marcar (o falta registrar la asistencia)', 'info'); refrescar(); },
   });
   const confirmar = useMutation({
     mutationFn: () => api.post<{ pasan: number; noPasan: number; siguiente: { nombre: string } | null }>(`/avance/${etapaId}/confirmar`, {}),
@@ -177,9 +192,17 @@ export function Avance() {
     if (filtro === 'no-pasa') return pendiente && f.resultado === 'NO_PASA';
     if (filtro === 'confirmados') return f.confirmado;
     return true;
+  }).filter((f) => {
+    if (!esEncuentro) return true;
+    if (fechaFiltro === 'sin' && f.encuentro_evento_id) return false;
+    if (fechaFiltro && fechaFiltro !== 'sin' && f.encuentro_evento_id !== fechaFiltro) return false;
+    if (asistenciaFiltro === 'si') return f.asistio_encuentro === true;
+    if (asistenciaFiltro === 'no') return f.asistio_encuentro === false;
+    if (asistenciaFiltro === 'sin-registrar') return !!f.encuentro_evento_id && f.asistio_encuentro === null;
+    return true;
   }).sort((a, b) => (esPre && orden === 'ranking'
     ? (a.ranking?.posicion ?? Infinity) - (b.ranking?.posicion ?? Infinity)
-    : 0)), [v, filtro, liceoFiltro, esPre, orden]);
+    : 0)), [v, filtro, liceoFiltro, esPre, orden, esEncuentro, fechaFiltro, asistenciaFiltro]);
 
   if (!proceso || isLoading) return <Cargando />;
   if (error || !v) return <ErrorCarga error={error} />;
@@ -190,6 +213,14 @@ export function Avance() {
   const marcadosPasa = v.estudiantes.filter((f) => f.en_esta_etapa && !f.confirmado && f.resultado === 'PASA');
   const marcadosNo = v.estudiantes.filter((f) => f.en_esta_etapa && !f.confirmado && f.resultado === 'NO_PASA');
   const totalPasan = r.marcados_pasa + r.confirmados_pasa;
+  const muestraAcepta = primera || esEncuentro;
+  // Visor del encuentro: cuántos asistieron (de los que están o pasaron por esta etapa).
+  const enc = esEncuentro ? {
+    sinFecha: v.estudiantes.filter((f) => f.en_esta_etapa && !f.encuentro_evento_id).length,
+    asistieron: v.estudiantes.filter((f) => f.asistio_encuentro === true).length,
+    noAsistieron: v.estudiantes.filter((f) => f.asistio_encuentro === false).length,
+    sinRegistrar: v.estudiantes.filter((f) => f.encuentro_evento_id && f.asistio_encuentro === null).length,
+  } : null;
   const avisarA = (tipo: string, soloSinAviso = true) =>
     navegar(`/comunicacion?nuevo=1&etapa=${e.id}&tipo=${tipo}${soloSinAviso ? '&soloSinAviso=1' : ''}`);
 
@@ -209,7 +240,29 @@ export function Avance() {
         </div>
       </div>
 
-      {esEncuentro && <FechasEncuentro />}
+      {esEncuentro && (
+        <>
+          <FechasEncuentro seleccionada={fechaFiltro} onSeleccionar={setFechaFiltro} onAsistencia={setAsistenciaDe} />
+          {enc && (
+            <div className="flex flex-wrap gap-2 text-sm">
+              {([
+                ['si', enc.asistieron, 'asistieron', 'text-green-700'],
+                ['no', enc.noAsistieron, 'no asistieron', 'text-red-700'],
+                ['sin-registrar', enc.sinRegistrar, 'inscritos sin asistencia registrada', 'text-yellow-700'],
+              ] as const).map(([k, n, t, c]) => (
+                <button key={k} onClick={() => setAsistenciaFiltro(asistenciaFiltro === k ? '' : k)} aria-pressed={asistenciaFiltro === k}
+                  className={`tarjeta px-3 py-2 text-left hover:bg-gray-50 ${asistenciaFiltro === k ? 'ring-1 ring-gray-900' : ''}`}>
+                  <strong className={`text-lg ${c}`}>{n}</strong> <span className="text-xs text-gray-500">{t}</span>
+                </button>
+              ))}
+              <button onClick={() => setFechaFiltro(fechaFiltro === 'sin' ? '' : 'sin')} aria-pressed={fechaFiltro === 'sin'}
+                className={`tarjeta px-3 py-2 text-left hover:bg-gray-50 ${fechaFiltro === 'sin' ? 'ring-1 ring-gray-900' : ''}`}>
+                <strong className="text-lg">{enc.sinFecha}</strong> <span className="text-xs text-gray-500">sin fecha asignada</span>
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Resumen */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -230,6 +283,18 @@ export function Avance() {
         {primera && (
           <button className="btn-secundario" disabled={sugerir.isPending} onClick={() => sugerir.mutate()}
             title="Aceptó la invitación → avanza · Rechazó → no avanza">Marcar según respuesta a la invitación</button>
+        )}
+        {muestraAcepta && (
+          <button className="btn-secundario" onClick={() => setImportando(true)}
+            title="Excel de Microsoft Forms: llena “Aceptó postular” y los datos de contacto">Importar respuestas del formulario (Excel)</button>
+        )}
+        {esEncuentro && (
+          <>
+            <button className="btn-secundario" disabled={!encuentros?.length} onClick={() => setInscribiendo(true)}
+              title={encuentros?.length ? 'Asignar una fecha a varios estudiantes de una vez' : 'Primero agrega fechas'}>Inscribir en una fecha</button>
+            <button className="btn-secundario" disabled={sugerirAsistencia.isPending} onClick={() => sugerirAsistencia.mutate()}
+              title="Asistió → avanza · No asistió → no avanza (solo a los que aún no tienen marca)">Marcar según asistencia</button>
+          </>
         )}
         {esPre && (
           <>
@@ -267,6 +332,21 @@ export function Avance() {
           <option value="">Todos los liceos</option>
           {liceos.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
         </select>
+        {esEncuentro && (
+          <>
+            <select className="input w-auto" value={fechaFiltro} onChange={(ev) => setFechaFiltro(ev.target.value)} aria-label="Filtrar por fecha del encuentro">
+              <option value="">Todas las fechas</option>
+              {encuentros?.map((x) => <option key={x.id} value={x.id}>{fechaEncuentro(x.fecha)}</option>)}
+              <option value="sin">Sin fecha asignada</option>
+            </select>
+            <select className="input w-auto" value={asistenciaFiltro} onChange={(ev) => setAsistenciaFiltro(ev.target.value as FiltroAsistencia)} aria-label="Filtrar por asistencia">
+              <option value="">Asistencia: todos</option>
+              <option value="si">Asistieron</option>
+              <option value="no">No asistieron</option>
+              <option value="sin-registrar">Sin registrar</option>
+            </select>
+          </>
+        )}
         <select className="input w-auto" value={filtro} onChange={(ev) => setFiltro(ev.target.value as Filtro)} aria-label="Filtrar">
           <option value="todos">Todos</option>
           <option value="sin-decidir">Sin decidir</option>
@@ -286,13 +366,13 @@ export function Avance() {
               {esPre && <th>RSH y hogar</th>}
               {esEntrevista && <th>Entrevista</th>}
               {esEncuentro && <><th className="min-w-[170px]">Fecha del encuentro</th><th>Asistió</th></>}
-              {primera && <th>Aceptó postular</th>}
+              {muestraAcepta && <th>Aceptó postular</th>}
               {requisitos.map((q) => <th key={q.id} className="min-w-[90px] text-center leading-tight">{q.nombre}</th>)}
               <th className="min-w-[170px]">Resultado</th>
             </tr>
           </thead>
           <tbody>
-            {filas.length === 0 && <tr><td colSpan={6 + requisitos.length + (esPre ? 2 : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
+            {filas.length === 0 && <tr><td colSpan={5 + requisitos.length + (esPre ? 2 : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0) + (muestraAcepta ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
             {filas.map((f) => {
               const bloqueado = f.confirmado || !f.en_esta_etapa;
               const fondo = f.confirmado ? 'bg-gray-50 text-gray-500' : f.resultado === 'PASA' ? 'bg-green-50/70' : f.resultado === 'NO_PASA' ? 'bg-red-50/60' : '';
@@ -326,9 +406,10 @@ export function Avance() {
                           {encuentros?.map((x) => <option key={x.id} value={x.id}>{fechaEncuentro(x.fecha)}</option>)}
                         </select>
                       </td>
-                      <td className="text-center">
+                      <td className="whitespace-nowrap text-center">
                         <input type="checkbox" checked={!!f.asistio_encuentro} disabled={!f.encuentro_evento_id}
                           onChange={(ev) => encuentro.mutate({ f, datos: { asistioEncuentro: ev.target.checked } })} aria-label={`Asistió ${f.nombres}`} />
+                        {f.asistio_encuentro === false && <span className="ml-1 text-[11px] text-red-700">no</span>}
                       </td>
                     </>
                   )}
@@ -342,7 +423,7 @@ export function Avance() {
                       </Link>
                     </td>
                   )}
-                  {primera && (
+                  {muestraAcepta && (
                     <td>{f.confirmacion === 'CONFIRMADO' ? <Etiqueta tono="verde">Sí</Etiqueta> : f.confirmacion === 'RECHAZADO' ? <Etiqueta tono="rojo">No</Etiqueta> : <Etiqueta tono="amarillo">Sin respuesta</Etiqueta>}</td>
                   )}
                   {requisitos.map((q) => {
@@ -422,6 +503,9 @@ export function Avance() {
           </p>
         </Modal>
       )}
+      {asistenciaDe && <RegistrarAsistencia encuentro={asistenciaDe} estudiantes={v.estudiantes} onCerrar={() => setAsistenciaDe(null)} />}
+      {inscribiendo && encuentros && <InscribirEnBloque estudiantes={v.estudiantes} encuentros={encuentros} onCerrar={() => setInscribiendo(false)} />}
+      {importando && invitados && <ImportarContactos invitados={invitados} onCerrar={() => setImportando(false)} />}
       {viendoRequisitos && <Requisitos vista={v} onCerrar={() => setViendoRequisitos(false)} />}
       {configEtapas && <ConfigurarEtapas onCerrar={() => setConfigEtapas(false)} />}
       {terminando && <TerminarEtapa etapaId={e.id} mensaje={terminando.mensaje} onCerrar={() => setTerminando(null)} />}

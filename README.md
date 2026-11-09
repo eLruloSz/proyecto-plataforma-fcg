@@ -32,7 +32,7 @@ docker compose --profile app down -v && docker compose --profile app up -d --bui
 que le falten. Todas se pueden aplicar más de una vez sin problema.
 
 ```bash
-docker exec -i becas-db psql -U becas -d becas < db/10_hitos_por_etapa.sql
+docker exec -i becas-db psql -U becas -d becas < db/11_usuarios_acceso.sql
 ```
 
 | Migración | Qué agrega |
@@ -47,8 +47,26 @@ docker exec -i becas-db psql -U becas -d becas < db/10_hitos_por_etapa.sql
 | `08_preseleccion.sql` | Ficha RSH, ranking y hito "Aviso de resultados" |
 | `09_calendario_entrevistas.sql` | Calendario de entrevistas |
 | `10_hitos_por_etapa.sql` | Etapa a la que pertenece cada hito del seguimiento por liceo |
+| `11_usuarios_acceso.sql` | Roles (equipo / solo lectura), invitaciones y "¿Olvidaste tu contraseña?" |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
+
+## Usuarios y acceso
+
+- **No hay registro abierto.** En producción el primer usuario se crea solo al arrancar si
+  la base no tiene usuarios y están definidas `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Desde ahí,
+  las demás cuentas se crean en **Usuarios** (abajo en el menú): se invita por correo y la
+  persona crea su contraseña con el enlace (vence en 48 horas, sirve una vez).
+- **Roles:** *Equipo* (trabaja el proceso, puede invitar usuarios) y *Solo lectura* (ve todo,
+  no modifica nada; pensado para el director de la fundación). El backend bloquea cualquier
+  cambio de una cuenta de solo lectura, no solo la interfaz.
+- **¿Olvidaste tu contraseña?** en el login manda un enlace que vence en 1 hora. La respuesta
+  es la misma exista o no el correo. Desde **Usuarios** también se puede mandar ese enlace a
+  otra persona.
+- Cambiar o restablecer la contraseña, desactivar una cuenta o cambiarle el rol cierra las
+  sesiones abiertas de esa persona.
+- Los enlaces se arman con `APP_URL` (dirección del frontend). En desarrollo los correos
+  llegan a Mailpit (<http://localhost:8025>).
 
 ## Cómo se usa
 

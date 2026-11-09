@@ -190,6 +190,23 @@ export class AvanceService {
     return { marcados: filas(r).length };
   }
 
+  /**
+   * En la etapa del encuentro online: asistió → avanza, no asistió → no avanza.
+   * Solo completa a quienes tienen la asistencia registrada y aún no tienen marca.
+   */
+  async sugerirDesdeAsistencia(etapaId: string, usuarioId: string) {
+    await this.etapa(etapaId);
+    const r = await this.ds.query(
+      `INSERT INTO resultados_etapa (postulacion_id, etapa_id, resultado, marcado_por)
+       SELECT p.id, $1, CASE WHEN p.asistio_encuentro THEN 'PASA' ELSE 'NO_PASA' END, $2
+         FROM postulaciones p
+        WHERE p.etapa_id = $1 AND p.asistio_encuentro IS NOT NULL
+       ON CONFLICT (postulacion_id, etapa_id) DO NOTHING
+       RETURNING id`,
+      [etapaId, usuarioId]);
+    return { marcados: filas(r).length };
+  }
+
   // -------------------------------------------------------------------------
   // Entrevista (Fase 3: etapas con clave ENTREVISTA o ENTREVISTA_COMITE)
   // -------------------------------------------------------------------------

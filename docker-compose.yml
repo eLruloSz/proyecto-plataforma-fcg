@@ -33,6 +33,7 @@ services:
       - ./db/08_preseleccion.sql:/docker-entrypoint-initdb.d/08_preseleccion.sql:ro
       - ./db/09_calendario_entrevistas.sql:/docker-entrypoint-initdb.d/09_calendario_entrevistas.sql:ro
       - ./db/10_hitos_por_etapa.sql:/docker-entrypoint-initdb.d/10_hitos_por_etapa.sql:ro
+      - ./db/11_usuarios_acceso.sql:/docker-entrypoint-initdb.d/11_usuarios_acceso.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s
@@ -64,6 +65,7 @@ services:
       MAIL_WEBHOOK_TOKEN: token-de-desarrollo
       UPLOAD_DIR: /app/uploads
       CORS_ORIGINS: http://localhost:8080
+      APP_URL: http://localhost:8080
     volumes:
       - becas_uploads:/app/uploads
 

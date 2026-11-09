@@ -30,6 +30,7 @@ class CambioContactoDto {
   @IsOptional() @ValidateIf((o) => o.email !== null) @IsString() @MaxLength(255) email?: string | null;
   @IsOptional() @ValidateIf((o) => o.telefono !== null) @IsString() @MaxLength(60) telefono?: string | null;
   @IsOptional() @ValidateIf((o) => o.rut !== null) @IsString() @MaxLength(15) rut?: string | null;
+  @IsOptional() @IsIn(['CONFIRMADO', 'RECHAZADO']) confirmacion?: 'CONFIRMADO' | 'RECHAZADO';
 }
 class ImportarContactosDto {
   @IsArray() @ArrayNotEmpty() @ArrayMaxSize(2000) @ValidateNested({ each: true }) @Type(() => CambioContactoDto)
@@ -39,6 +40,13 @@ class EncuentroDto {
   @IsISO8601() fecha: string;
   @IsOptional() @ValidateIf((o) => o.enlace !== null && o.enlace !== '') @IsUrl({}, { message: 'El enlace no es una dirección válida.' }) @MaxLength(500)
   enlace?: string | null;
+}
+class InscribirEncuentroDto {
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) postulacionIds: string[];
+}
+class AsistenciaEncuentroDto {
+  /** Los inscritos en la fecha que NO asistieron; todos los demás quedan como "asistió". */
+  @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) ausentes: string[];
 }
 class ComentarioDto {
   @IsString() @MinLength(1) @MaxLength(4000) texto: string;
@@ -108,6 +116,20 @@ export class InvitadosController {
   @Post('encuentros')
   crearEncuentro(@Body() dto: EncuentroDto, @Usuario() u: UsuarioSesion) {
     return this.svc.crearEncuentro(dto.fecha, dto.enlace, u.id);
+  }
+
+  /** Inscribe a varios estudiantes de una vez en una fecha del encuentro. */
+  @Post('encuentros/:id/inscribir')
+  @HttpCode(200)
+  inscribirEncuentro(@Param('id', ParseUUIDPipe) id: string, @Body() dto: InscribirEncuentroDto, @Usuario() u: UsuarioSesion) {
+    return this.svc.inscribirEnEncuentro(id, dto.postulacionIds, u.id);
+  }
+
+  /** Asistencia de una fecha: se indican solo los ausentes, el resto queda como "asistió". */
+  @Post('encuentros/:id/asistencia')
+  @HttpCode(200)
+  asistenciaEncuentro(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AsistenciaEncuentroDto, @Usuario() u: UsuarioSesion) {
+    return this.svc.registrarAsistencia(id, dto.ausentes, u.id);
   }
 
   @Delete('encuentros/:id')

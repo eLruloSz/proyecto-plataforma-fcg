@@ -7,6 +7,8 @@ import { ProveedorSesion, useSesion } from './sesion';
 import { ProveedorAvisos, Cargando, ErrorCarga } from './ui';
 import { Layout } from './Layout';
 import { Login } from './paginas/Login';
+import { Acceso } from './paginas/Acceso';
+import { Usuarios } from './paginas/Usuarios';
 import { Dashboard } from './paginas/Dashboard';
 import { Liceos } from './paginas/Liceos';
 import { DetalleLiceo } from './paginas/DetalleLiceo';
@@ -25,8 +27,10 @@ const cliente = new QueryClient({
 });
 
 function Rutas() {
-  const { usuario, cargando } = useSesion();
+  const { usuario, cargando, soloLectura } = useSesion();
   const inicio = useInicio(!!usuario);
+  // Enlace de invitación o de "¿Olvidaste tu contraseña?" (con o sin sesión iniciada).
+  if (window.location.pathname === '/acceso') return <Acceso />;
   if (cargando) return <Cargando />;
   if (!usuario) return <Login />;
   // Sin proceso activo solo se muestra la pantalla para iniciarlo.
@@ -52,6 +56,7 @@ function Rutas() {
         <Route path="generaciones" element={<PaginaGeneraciones />} />
         <Route path="generaciones/:anio" element={<DetalleGeneracion />} />
         <Route path="perfil" element={<Perfil />} />
+        {!soloLectura && <Route path="usuarios" element={<Usuarios />} />}
         <Route path="*" element={<Navigate to="/" />} />
       </Route>
     </Routes>

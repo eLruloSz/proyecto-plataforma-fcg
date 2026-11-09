@@ -258,11 +258,54 @@ export class InvitadosService {
     return this.encuentros();
   }
 
+  /** Revisa que la etapa del encuentro esté activa y que la fecha sea de este proceso. */
+  private async fechaEncuentroValida(eventoId: string, procesoId: string) {
+    const [{ habilitado }] = await this.ds.query(
+      `SELECT EXISTS (SELECT 1 FROM etapas WHERE proceso_id = $1 AND clave = 'ENCUENTRO' AND estado <> 'PENDIENTE') AS habilitado`,
+      [procesoId]);
+    if (!habilitado) throw new BadRequestException('El encuentro online se habilita cuando se activa su etapa.');
+    const [ev] = await this.ds.query(
+      `SELECT 1 FROM eventos WHERE id = $1 AND proceso_id = $2 AND tipo = 'ENCUENTRO_ONLINE'`, [eventoId, procesoId]);
+    if (!ev) throw new NotFoundException('La fecha del encuentro no existe.');
+  }
+
+  /** Inscribe a varios estudiantes en una fecha (los que ya tenían otra fecha se cambian a esta). */
+  async inscribirEnEncuentro(eventoId: string, postulacionIds: string[], usuarioId: string) {
+    const procesoId = await this.proceso.id();
+    await this.fechaEncuentroValida(eventoId, procesoId);
+    const r = await this.ds.query(
+      `UPDATE postulaciones SET encuentro_evento_id = $1,
+              asistio_encuentro = CASE WHEN encuentro_evento_id = $1 THEN asistio_encuentro ELSE NULL END
+        WHERE id = ANY($2::uuid[]) AND proceso_id = $3
+       RETURNING id`,
+      [eventoId, postulacionIds, procesoId]);
+    await this.auditoria.registrar(usuarioId, 'INSCRIBIR_ENCUENTRO', 'eventos', eventoId, { estudiantes: filas(r).length });
+    return { inscritos: filas(r).length, encuentros: await this.encuentros() };
+  }
+
+  /**
+   * Asistencia de una fecha en un solo paso: todos los inscritos quedan como
+   * "asistió" salvo los indicados como ausentes.
+   */
+  async registrarAsistencia(eventoId: string, ausentes: string[], usuarioId: string) {
+    const procesoId = await this.proceso.id();
+    await this.fechaEncuentroValida(eventoId, procesoId);
+    const r: { asistio: boolean }[] = filas(await this.ds.query(
+      `UPDATE postulaciones SET asistio_encuentro = NOT (id = ANY($2::uuid[]))
+        WHERE encuentro_evento_id = $1 AND proceso_id = $3
+       RETURNING asistio_encuentro AS asistio`,
+      [eventoId, ausentes, procesoId]));
+    const asistieron = r.filter((x) => x.asistio).length;
+    await this.auditoria.registrar(usuarioId, 'ASISTENCIA_ENCUENTRO', 'eventos', eventoId, { asistieron, ausentes: r.length - asistieron });
+    return { asistieron, ausentes: r.length - asistieron, encuentros: await this.encuentros() };
+  }
+
   async encuentros() {
     return this.ds.query(
       `SELECT e.id, e.fecha, e.enlace,
               (SELECT COUNT(*)::int FROM postulaciones p WHERE p.encuentro_evento_id = e.id) AS inscritos,
-              (SELECT COUNT(*)::int FROM postulaciones p WHERE p.encuentro_evento_id = e.id AND p.asistio_encuentro) AS asistentes
+              (SELECT COUNT(*)::int FROM postulaciones p WHERE p.encuentro_evento_id = e.id AND p.asistio_encuentro) AS asistentes,
+              (SELECT COUNT(*)::int FROM postulaciones p WHERE p.encuentro_evento_id = e.id AND p.asistio_encuentro = FALSE) AS ausentes
          FROM eventos e WHERE e.proceso_id = $1 AND e.tipo = 'ENCUENTRO_ONLINE' ORDER BY e.fecha`,
       [await this.proceso.id()]);
   }

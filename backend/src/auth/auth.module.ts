@@ -3,10 +3,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { AccesoService } from './acceso.service';
+import { ComunicacionModule } from '../comunicacion/comunicacion.module';
 
 @Global()
 @Module({
   imports: [
+    ComunicacionModule, // MailerService para los correos de invitación y restablecimiento
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => {
@@ -17,7 +20,7 @@ import { AuthService } from './auth.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [JwtModule],
+  providers: [AuthService, AccesoService],
+  exports: [JwtModule, AccesoService],
 })
 export class AuthModule {}

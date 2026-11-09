@@ -38,7 +38,7 @@ async function pedir<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise
   let datos: any = null;
   try { datos = texto ? JSON.parse(texto) : null; } catch { datos = texto; }
   if (!r.ok) {
-    if (r.status === 401 && ruta !== '/auth/login') alExpirar();
+    if (r.status === 401 && !ruta.startsWith('/auth/login') && !ruta.startsWith('/auth/enlace')) alExpirar();
     const msg = Array.isArray(datos?.message) ? datos.message.join(' ') : datos?.message ?? `Error ${r.status}`;
     throw new ErrorApi(r.status, msg, datos);
   }
@@ -139,13 +139,13 @@ export interface Invitado {
   resultado_etapa: 'PASA' | 'NO_PASA' | null; resultado_confirmado: boolean; faltan: string[];
 }
 /** Importación del Excel de respuestas del formulario (Microsoft Forms). */
-export type CampoFormulario = 'nombre' | 'apellido1' | 'apellido2' | 'rut' | 'liceo' | 'email' | 'telefono';
-export interface InvitadoResumen { id: string; codigo: string; nombre: string; liceo: string; email: string | null; telefono: string | null; rut: string | null }
+export type CampoFormulario = 'nombre' | 'apellido1' | 'apellido2' | 'rut' | 'liceo' | 'email' | 'telefono' | 'acepta';
+export interface InvitadoResumen { id: string; codigo: string; nombre: string; liceo: string; email: string | null; telefono: string | null; rut: string | null; confirmacion: Confirmacion }
 export interface FilaFormulario {
   fila: number;
-  respuesta: { nombre: string | null; rut: string | null; liceo: string | null; email: string | null; telefono: string | null };
+  respuesta: { nombre: string | null; rut: string | null; liceo: string | null; email: string | null; telefono: string | null; acepta: string | null };
   /** Datos ya validados y normalizados (null si no son válidos). */
-  limpio: { email: string | null; telefono: string | null; rut: string | null };
+  limpio: { email: string | null; telefono: string | null; rut: string | null; confirmacion: 'CONFIRMADO' | 'RECHAZADO' | null };
   sugerenciaEmail: string | null;
   liceo: string | null;
   calce: 'CALZA' | 'AMBIGUO' | 'SIN_CALCE';
@@ -162,7 +162,7 @@ export interface PreviaFormulario {
   resumen: { respuestas: number; calzan: number; ambiguas: number; sinCalce: number; repetidas: number };
   filas: FilaFormulario[];
 }
-export interface Encuentro { id: string; fecha: string; enlace: string | null; inscritos: number; asistentes: number }
+export interface Encuentro { id: string; fecha: string; enlace: string | null; inscritos: number; asistentes: number; ausentes: number }
 export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
 export interface Plantilla {
   id: string; nombre: string; proposito: string; asunto: string; cuerpo: string;
@@ -329,6 +329,21 @@ export interface GeneracionHistoricaDatos {
   listaBecarios: { nombre: string; liceo: string | null }[];
   observaciones: string | null;
 }
+
+// --- Usuarios y acceso -------------------------------------------------------
+/** EQUIPO: trabaja el proceso · LECTOR: solo consulta (ej. director de la fundación). */
+export type Rol = 'EQUIPO' | 'LECTOR';
+export type EstadoUsuario = 'ACTIVO' | 'INVITACION_PENDIENTE' | 'INVITACION_VENCIDA' | 'DESACTIVADO';
+export interface UsuarioAdmin {
+  id: string; email: string; nombre: string; rol: Rol; activo: boolean; estado: EstadoUsuario;
+  ultimo_acceso: string | null; creado_en: string; invitado_por: string | null; invitacion_vence: string | null;
+}
+/** Respuesta de login y de usar un enlace de acceso. */
+export interface RespuestaSesion { token: string; usuario: { id: string; email: string; nombre: string; rol: Rol } }
+export const ROLES: Record<Rol, { nombre: string; detalle: string }> = {
+  EQUIPO: { nombre: 'Equipo', detalle: 'Trabaja el proceso: puede ver y modificar todo, e invitar usuarios.' },
+  LECTOR: { nombre: 'Solo lectura', detalle: 'Puede ver toda la información, pero no modificar nada.' },
+};
 
 // Textos para mostrar
 export const PROPOSITOS: Record<string, string> = {
