@@ -8,7 +8,10 @@ import { normalizar, valorCelda } from '../nominas/parser';
  *   n° | Estab. | Id. | Apellido Paterno | Apellido Materno | Nombre | Notas |
  *   Ranking Notas | Puntaje Académico | RSH | I.P.C. | Puntaje I.P.C. |
  *   Puntaje Nivel Ed. Padres | Vul + (0/1) | Pje. Vul. | Pje. Socio econ. |
- *   Comp. y Part. | Puntaje Total | Finalistas | Ranking | Finalistas (repetida)
+ *   Comp. y Part. | Puntaje Total | Ranking
+ *
+ * El Excel NO trae quién avanza ("Finalistas"): eso se decide en la plataforma
+ * con "Marcar según ranking". Si un archivo antiguo trae esa columna, se ignora.
  *
  * El archivo puede traer varias pestañas (distintas ponderaciones); se elige
  * cuál cargar. Las columnas se buscan por su título, no por su posición.
@@ -33,7 +36,6 @@ export interface FilaRanking {
   puntajeSocioeconomico: number | null;
   puntajeCompromiso: number | null;
   puntajeTotal: number | null;
-  finalista: boolean;
   posicion: number | null;
 }
 
@@ -66,7 +68,6 @@ function claveDeTitulo(t: string): Clave | null {
   if (t.includes('socio')) return 'puntajeSocioeconomico';
   if (t.startsWith('comp')) return 'puntajeCompromiso';
   if (t.includes('total')) return 'puntajeTotal';
-  if (t.startsWith('finalista')) return 'finalista';
   if (t.startsWith('ranking')) return 'posicion';
   return null;
 }
@@ -92,7 +93,7 @@ function filaDeTitulos(ws: ExcelJS.Worksheet): { fila: number; columnas: Map<num
       const v = valorCelda(cell);
       if (v === null) return;
       const clave = claveDeTitulo(normalizar(String(v)));
-      // Si una columna se repite (ej. "Finalistas" dos veces), vale la primera.
+      // Si una columna se repite, vale la primera.
       if (clave && !usadas.has(clave)) { columnas.set(col, clave); usadas.add(clave); }
     });
     if (usadas.has('id') && (usadas.has('apellidoPaterno') || usadas.has('nombre'))) return { fila: r, columnas };
@@ -142,7 +143,6 @@ export async function leerRanking(buffer: Buffer, hojaElegida?: string): Promise
         puntajeSocioeconomico: num('puntajeSocioeconomico'),
         puntajeCompromiso: num('puntajeCompromiso'),
         puntajeTotal: num('puntajeTotal'),
-        finalista: num('finalista') === 1,
         posicion: num('posicion'),
       });
     }

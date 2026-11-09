@@ -17,8 +17,8 @@ from pathlib import Path
 
 import openpyxl
 
-NOMBRES = ["Sofía", "Martina", "Florencia", "Isidora", "Agustina", "Josefa", "Emilia", "Catalina",
-           "Antonia", "Valentina", "Mateo", "Benjamín", "Vicente", "Tomás", "Agustín", "Joaquín",
+NOMBRES = ["Sofía", "Martina", "Florencia", "Isidora", "Agustina", "Joaquin", "Josefa", "Emilia", "Catalina",
+           "Antonia", "Abraham", "Valentina", "Mateo", "Benjamín", "Vicente", "Tomás", "Agustín", "Joaquín",
            "Maximiliano", "Lucas", "Matías", "Cristóbal", "Fernanda", "Javiera", "Camila", "Diego"]
 APELLIDOS = ["González", "Muñoz", "Rojas", "Díaz", "Pérez", "Soto", "Contreras", "Silva", "Martínez",
              "Sepúlveda", "Morales", "Rodríguez", "López", "Fuentes", "Hernández", "Torres", "Araya",

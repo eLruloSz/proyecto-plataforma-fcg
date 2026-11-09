@@ -38,8 +38,8 @@ class FichaDto {
 }
 
 class MarcarRankingDto {
-  @IsIn(['finalistas', 'primeros']) criterio: 'finalistas' | 'primeros';
-  @IsOptional() @IsInt() @Min(1) @Max(2000) n?: number;
+  /** Cuántos primeros lugares avanzan (los empates entran). */
+  @IsInt() @Min(1) @Max(2000) n: number;
 }
 
 @ApiTags('preseleccion')
@@ -81,11 +81,11 @@ export class PreseleccionController {
     return this.svc.eliminar(u.id);
   }
 
-  /** Marca pasa / no pasa en la etapa según el ranking (finalistas o los N primeros). */
+  /** Marca pasa / no pasa en la etapa según el ranking (avanzan los N primeros). */
   @Post('avance/:etapaId/marcar-segun-ranking')
   @HttpCode(200)
   marcar(@Param('etapaId', ParseUUIDPipe) etapaId: string, @Body() dto: MarcarRankingDto, @Usuario() u: UsuarioSesion) {
-    return this.svc.marcarSegunRanking(etapaId, dto.criterio, dto.n, u.id);
+    return this.svc.marcarSegunRanking(etapaId, dto.n, u.id);
   }
 }
 

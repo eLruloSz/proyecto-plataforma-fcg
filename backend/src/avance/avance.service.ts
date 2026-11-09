@@ -63,7 +63,7 @@ export class AvanceService {
               (SELECT to_jsonb(fi) - 'postulacion_id' - 'actualizado_por' FROM fichas_postulacion fi WHERE fi.postulacion_id = p.id) AS ficha,
               (SELECT jsonb_build_object('posicion', rp.posicion, 'puntaje_total', rp.puntaje_total::float,
                         'puntaje_academico', rp.puntaje_academico::float, 'puntaje_socioeconomico', rp.puntaje_socioeconomico::float,
-                        'puntaje_compromiso', rp.puntaje_compromiso::float, 'finalista', rp.finalista, 'rsh', rp.rsh)
+                        'puntaje_compromiso', rp.puntaje_compromiso::float, 'rsh', rp.rsh)
                  FROM ranking_postulacion rp JOIN cargas ca ON ca.id = rp.carga_id
                 WHERE rp.postulacion_id = p.id AND ca.tipo = 'RANKING' AND ca.proceso_id = p.proceso_id
                 ORDER BY ca.cargado_en DESC LIMIT 1) AS ranking,

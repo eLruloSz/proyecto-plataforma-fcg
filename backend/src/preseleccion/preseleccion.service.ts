@@ -131,7 +131,6 @@ export class PreseleccionService {
         filas: r.filas.length,
         calzan: r.filas.filter((f) => f.postulacion).length,
         sinCalce: r.filas.filter((f) => !f.postulacion).length,
-        finalistas: r.filas.filter((f) => f.finalista).length,
         conAvisos: r.filas.filter((f) => f.avisos.length).length,
       },
     };
@@ -154,10 +153,10 @@ export class PreseleccionService {
         const { postulacion, avisos: _a, ...datos } = f;
         await em.query(
           `INSERT INTO ranking_postulacion (carga_id, postulacion_id, posicion, puntaje_total, puntaje_academico,
-             puntaje_socioeconomico, puntaje_compromiso, finalista, rsh, datos)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+             puntaje_socioeconomico, puntaje_compromiso, rsh, datos)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [c.id, postulacion!.id, f.posicion, f.puntajeTotal, f.puntajeAcademico, f.puntajeSocioeconomico,
-            f.puntajeCompromiso, f.finalista, f.rsh?.slice(0, 20) ?? null, JSON.stringify(datos)]);
+            f.puntajeCompromiso, f.rsh?.slice(0, 20) ?? null, JSON.stringify(datos)]);
       }
       await this.auditoria.registrar(usuarioId, 'CARGAR_RANKING', 'cargas', c.id, { filas: validas.length }, em);
     });
@@ -179,36 +178,34 @@ export class PreseleccionService {
 
   /**
    * Marca "pasa" / "no pasa" en la etapa según el ranking cargado:
-   *   finalistas → pasan los marcados como finalistas en el Excel;
-   *   primeros   → pasan los `n` primeros lugares (empates incluidos).
+   * pasan los `n` primeros lugares (empates incluidos), el resto "no pasa".
    * Solo toca a quienes están en la etapa, tienen ranking y aún no tienen
    * un resultado confirmado. Reemplaza las marcas provisorias que tuvieran.
    */
-  async marcarSegunRanking(etapaId: string, criterio: 'finalistas' | 'primeros', n: number | undefined, usuarioId: string) {
+  async marcarSegunRanking(etapaId: string, n: number, usuarioId: string) {
     const procesoId = await this.proceso.id();
     const [e] = await this.ds.query(`SELECT 1 FROM etapas WHERE id = $1 AND proceso_id = $2`, [etapaId, procesoId]);
     if (!e) throw new NotFoundException('Etapa no encontrada.');
-    if (criterio === 'primeros' && !(n && n > 0)) throw new BadRequestException('Indica cuántos avanzan.');
+    if (!(n > 0)) throw new BadRequestException('Indica cuántos avanzan.');
     const { carga } = await this.estado();
     if (!carga) throw new ConflictException('Primero sube el Excel del ranking.');
 
-    const pasa = criterio === 'finalistas' ? 'rp.finalista' : 'rp.posicion <= $4';
     const r = await this.ds.query(
       `INSERT INTO resultados_etapa (postulacion_id, etapa_id, resultado, marcado_por)
-       SELECT p.id, $1, CASE WHEN ${pasa} THEN 'PASA' ELSE 'NO_PASA' END, $2
+       SELECT p.id, $1, CASE WHEN rp.posicion <= $4 THEN 'PASA' ELSE 'NO_PASA' END, $2
          FROM postulaciones p
          JOIN ranking_postulacion rp ON rp.postulacion_id = p.id AND rp.carga_id = $3
          LEFT JOIN resultados_etapa x ON x.postulacion_id = p.id AND x.etapa_id = $1
         WHERE p.etapa_id = $1 AND NOT COALESCE(x.confirmado, FALSE)
        ON CONFLICT (postulacion_id, etapa_id) DO UPDATE SET resultado = EXCLUDED.resultado, marcado_por = $2, marcado_en = NOW()
        RETURNING resultado`,
-      criterio === 'finalistas' ? [etapaId, usuarioId, carga.id] : [etapaId, usuarioId, carga.id, n]);
+      [etapaId, usuarioId, carga.id, n]);
     const marcas = filasDe(r) as { resultado: string }[];
     const [{ sin_ranking }] = await this.ds.query(
       `SELECT COUNT(*)::int AS sin_ranking FROM postulaciones p
         WHERE p.etapa_id = $1 AND NOT EXISTS (SELECT 1 FROM ranking_postulacion rp WHERE rp.postulacion_id = p.id AND rp.carga_id = $2)`,
       [etapaId, carga.id]);
-    await this.auditoria.registrar(usuarioId, 'MARCAR_SEGUN_RANKING', 'etapas', etapaId, { criterio, n });
+    await this.auditoria.registrar(usuarioId, 'MARCAR_SEGUN_RANKING', 'etapas', etapaId, { n });
     return {
       pasan: marcas.filter((m) => m.resultado === 'PASA').length,
       noPasan: marcas.filter((m) => m.resultado === 'NO_PASA').length,

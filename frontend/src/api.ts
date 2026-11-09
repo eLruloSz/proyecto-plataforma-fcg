@@ -251,18 +251,18 @@ export interface FichaPostulacion {
 }
 export interface RankingEstudiante {
   posicion: number | null; puntaje_total: number | null; puntaje_academico: number | null;
-  puntaje_socioeconomico: number | null; puntaje_compromiso: number | null; finalista: boolean; rsh: string | null;
+  puntaje_socioeconomico: number | null; puntaje_compromiso: number | null; rsh: string | null;
 }
 export interface FilaRankingPrevia {
   fila: number; id: string | null; establecimiento: string | null; apellidoPaterno: string | null; apellidoMaterno: string | null; nombre: string | null;
   notas: number | null; puntajeAcademico: number | null; rsh: string | null; puntajeSocioeconomico: number | null; puntajeCompromiso: number | null;
-  puntajeTotal: number | null; finalista: boolean; posicion: number | null;
+  puntajeTotal: number | null; posicion: number | null;
   postulacion: { id: string; codigo: string; nombre: string; liceo: string } | null; avisos: string[];
 }
 export interface PreviaRanking {
   hojas: { nombre: string; filas: number }[]; hoja: string | null; filas: FilaRankingPrevia[]; advertencias: string[];
   anterior: { nombre_archivo: string; cargado_en: string } | null;
-  resumen: { filas: number; calzan: number; sinCalce: number; finalistas: number; conAvisos: number };
+  resumen: { filas: number; calzan: number; sinCalce: number; conAvisos: number };
 }
 export interface CargaRanking { carga: { id: string; nombre_archivo: string; cargado_en: string; filas_ok: number; advertencias: Observacion[] } | null }
 

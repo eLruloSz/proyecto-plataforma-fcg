@@ -254,7 +254,6 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
           <Etiqueta>{r.filas} filas</Etiqueta>
           <Etiqueta tono="verde">{r.calzan} calzan con un invitado</Etiqueta>
           {r.sinCalce > 0 && <Etiqueta tono="rojo">{r.sinCalce} sin calce (no se cargan)</Etiqueta>}
-          <Etiqueta tono="azul">{r.finalistas} finalistas</Etiqueta>
         </div>
         {previa.anterior && (
           <Caja tono="amarillo">Ya hay un ranking cargado ({previa.anterior.nombre_archivo}, {fecha(previa.anterior.cargado_en)}). Al cargar este, se reemplaza.</Caja>
@@ -268,7 +267,7 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
               <tr>
                 <th className="w-14">Lugar</th><th>Id.</th><th>Estudiante (Excel)</th><th>Establecimiento</th>
                 <th className="text-right">Académico</th><th className="text-right">Socioecon.</th><th className="text-right">Compromiso</th>
-                <th className="text-right">Total</th><th>RSH</th><th>Finalista</th>
+                <th className="text-right">Total</th><th>RSH</th>
               </tr>
             </thead>
             <tbody>
@@ -286,7 +285,6 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
                   <td className="text-right tabular-nums text-gray-500">{pts(f.puntajeCompromiso)}</td>
                   <td className="text-right font-semibold tabular-nums">{pts(f.puntajeTotal)}</td>
                   <td>{f.rsh === 'P' ? <Etiqueta tono="amarillo">Pendiente</Etiqueta> : f.rsh ?? '—'}</td>
-                  <td>{f.finalista ? <Etiqueta tono="azul">Sí</Etiqueta> : ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -297,16 +295,15 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
   );
 }
 
-export function MarcarSegunRanking({ etapaId, cupo, finalistas, onCerrar }: {
-  etapaId: string; cupo: number | null; finalistas: number; onCerrar: () => void;
+export function MarcarSegunRanking({ etapaId, cupo, onCerrar }: {
+  etapaId: string; cupo: number | null; onCerrar: () => void;
 }) {
   const qc = useQueryClient();
   const avisar = useAviso();
-  const [criterio, setCriterio] = useState<'finalistas' | 'primeros'>(finalistas ? 'finalistas' : 'primeros');
   const [n, setN] = useState(String(cupo ?? 60));
   const marcar = useMutation({
     mutationFn: () => api.post<{ pasan: number; noPasan: number; sinRanking: number }>(`/avance/${etapaId}/marcar-segun-ranking`,
-      criterio === 'finalistas' ? { criterio } : { criterio, n: Number(n) }),
+      { n: Number(n) }),
     onSuccess: (r) => {
       ['avance', 'proceso', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       avisar(`Marcados: ${r.pasan} avanzan y ${r.noPasan} no avanzan${r.sinRanking ? ` · ${r.sinRanking} sin ranking quedaron como estaban` : ''}. Revisa y confirma.`, 'info');
@@ -317,19 +314,12 @@ export function MarcarSegunRanking({ etapaId, cupo, finalistas, onCerrar }: {
   return (
     <Modal titulo="Marcar según el ranking" onCerrar={onCerrar} ancho="max-w-md"
       pie={<><button className="btn-secundario" onClick={onCerrar}>Cancelar</button>
-        <button className="btn-primario" disabled={marcar.isPending || (criterio === 'primeros' && !(Number(n) > 0))} onClick={() => marcar.mutate()}>Marcar</button></>}>
+        <button className="btn-primario" disabled={marcar.isPending || !(Number(n) > 0)} onClick={() => marcar.mutate()}>Marcar</button></>}>
       <div className="space-y-3 text-sm">
-        <label className="flex items-start gap-2">
-          <input type="radio" className="mt-1" checked={criterio === 'finalistas'} disabled={!finalistas} onChange={() => setCriterio('finalistas')} />
-          <span>Avanzan los <strong>finalistas</strong> marcados en el Excel ({finalistas})</span>
-        </label>
-        <label className="flex items-start gap-2">
-          <input type="radio" className="mt-1" checked={criterio === 'primeros'} onChange={() => setCriterio('primeros')} />
-          <span className="flex flex-wrap items-center gap-1.5">
-            Avanzan los primeros
-            <input type="number" min={1} className="input w-20 py-1" value={n} onChange={(e) => { setN(e.target.value); setCriterio('primeros'); }} aria-label="Cuántos avanzan" />
-            lugares del ranking (los empates entran)
-          </span>
+        <label className="flex flex-wrap items-center gap-1.5">
+          Avanzan los primeros
+          <input type="number" min={1} className="input w-20 py-1" value={n} onChange={(e) => setN(e.target.value)} aria-label="Cuántos avanzan" />
+          lugares del ranking (los empates entran)
         </label>
         <p className="text-xs text-gray-500">
           El resto de los estudiantes con ranking queda como “no avanza”. Reemplaza las marcas que aún no estén confirmadas;

@@ -382,11 +382,8 @@ export function Avance() {
                   {esPre && (
                     <td className="whitespace-nowrap">
                       {f.ranking ? (
-                        <>
-                          <div><strong className="tabular-nums">{f.ranking.posicion ?? '—'}°</strong>
-                            <span className="ml-1 text-xs text-gray-500">{f.ranking.puntaje_total ?? '—'} pts</span></div>
-                          {f.ranking.finalista && <Etiqueta tono="azul">Finalista</Etiqueta>}
-                        </>
+                        <div><strong className="tabular-nums">{f.ranking.posicion ?? '—'}°</strong>
+                          <span className="ml-1 text-xs text-gray-500">{f.ranking.puntaje_total ?? '—'} pts</span></div>
                       ) : <span className="text-xs text-gray-400">sin ranking</span>}
                     </td>
                   )}
@@ -513,8 +510,7 @@ export function Avance() {
       {fichaDe && <FichaModal estudiante={fichaDe} onCerrar={() => setFichaDe(null)} />}
       {subiendoRanking && <SubirRanking onCerrar={() => setSubiendoRanking(false)} />}
       {marcandoRanking && (
-        <MarcarSegunRanking etapaId={e.id} cupo={e.cupo} onCerrar={() => setMarcandoRanking(false)}
-          finalistas={v.estudiantes.filter((x) => x.ranking?.finalista && x.en_esta_etapa).length} />
+        <MarcarSegunRanking etapaId={e.id} cupo={e.cupo} onCerrar={() => setMarcandoRanking(false)} />
       )}
       <p className="text-xs text-gray-400">¿Buscas a un estudiante en particular? Revisa <Link to="/invitados" className="underline">Invitados</Link>.</p>
     </div>
