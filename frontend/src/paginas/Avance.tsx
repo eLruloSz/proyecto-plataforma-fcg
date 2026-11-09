@@ -234,6 +234,15 @@ export function Avance() {
     noAsistieron: v.estudiantes.filter((f) => f.asistio_encuentro === false).length,
     sinRegistrar: v.estudiantes.filter((f) => f.encuentro_evento_id && f.asistio_encuentro === null).length,
   } : null;
+  // Criterio para marcar automáticamente quién avanza (uno por tipo de etapa).
+  const criterio: { texto: string; ayuda: string; accion: () => void; deshabilitado?: boolean } | null =
+    primera ? { texto: 'Marcar según respuesta a la invitación', ayuda: 'Aceptó postular → avanza · Rechazó → no avanza. Solo a quienes aún no tienen marca.',
+      accion: () => sugerir.mutate(), deshabilitado: sugerir.isPending }
+    : esEncuentro ? { texto: 'Marcar según asistencia', ayuda: 'Asistió → avanza · No asistió → no avanza. Solo a quienes aún no tienen marca.',
+      accion: () => sugerirAsistencia.mutate(), deshabilitado: sugerirAsistencia.isPending }
+    : esPre ? { texto: 'Marcar según ranking', ayuda: ranking?.carga ? 'Los primeros N del ranking avanzan, el resto no.' : 'Primero sube el ranking (Excel) en Herramientas.',
+      accion: () => setMarcandoRanking(true), deshabilitado: !ranking?.carga }
+    : null;
   const avisarA = (tipo: string, soloSinAviso = true, deEtapa = e.id) =>
     navegar(`/comunicacion?nuevo=1&etapa=${deEtapa}&tipo=${tipo}${soloSinAviso ? '&soloSinAviso=1' : ''}`);
   const ra = vAnterior?.resumen;
@@ -303,40 +312,72 @@ export function Avance() {
 
       {e.cupo !== null && totalPasan > e.cupo && <Caja tono="rojo">Hay {totalPasan} estudiantes que avanzan y el cupo de esta etapa es {e.cupo}.</Caja>}
 
-      {/* Acciones */}
+      {/* Herramientas propias de la etapa */}
       <div className="tarjeta flex flex-wrap items-center gap-2 bg-gray-50 px-4 py-3">
-        {primera && (
-          <button className="btn-secundario" disabled={sugerir.isPending} onClick={() => sugerir.mutate()}
-            title="Aceptó la invitación → avanza · Rechazó → no avanza">Marcar según respuesta a la invitación</button>
-        )}
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Herramientas</span>
         {muestraAcepta && (
           <button className="btn-secundario" onClick={() => setImportando(true)}
             title="Excel de Microsoft Forms: llena “Aceptó postular” y los datos de contacto">Importar respuestas del formulario (Excel)</button>
         )}
         {esEncuentro && (
-          <>
-            <button className="btn-secundario" disabled={!encuentros?.length} onClick={() => setInscribiendo(true)}
-              title={encuentros?.length ? 'Asignar una fecha a varios estudiantes de una vez' : 'Primero agrega fechas'}>Inscribir en una fecha</button>
-            <button className="btn-secundario" disabled={sugerirAsistencia.isPending} onClick={() => sugerirAsistencia.mutate()}
-              title="Asistió → avanza · No asistió → no avanza (solo a los que aún no tienen marca)">Marcar según asistencia</button>
-          </>
+          <button className="btn-secundario" disabled={!encuentros?.length} onClick={() => setInscribiendo(true)}
+            title={encuentros?.length ? 'Asignar una fecha a varios estudiantes de una vez' : 'Primero agrega fechas'}>Inscribir en una fecha</button>
         )}
         {esPre && (
-          <>
-            <button className="btn-secundario" onClick={() => setSubiendoRanking(true)}>{ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
-            <button className="btn-secundario" disabled={!ranking?.carga} onClick={() => setMarcandoRanking(true)}
-              title={ranking?.carga ? 'Marca avanza / no avanza según el ranking' : 'Primero sube el ranking'}>Marcar según ranking</button>
-          </>
+          <button className="btn-secundario" onClick={() => setSubiendoRanking(true)}>{ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
         )}
         {esEntrevista && <Link className="btn-secundario" to={`/entrevistas/${e.id}`}>Calendario de entrevistas</Link>}
         <button className="btn-secundario" onClick={() => setViendoRequisitos(true)}>Requisitos ({requisitos.length})</button>
         {r.con_requisitos_pendientes > 0 && (
           <button className="btn-secundario" onClick={() => avisarA('FALTAN_REQUISITOS', false)}>Recordar requisitos pendientes ({r.con_requisitos_pendientes})</button>
         )}
-        <div className="ml-auto flex flex-wrap gap-2">
-          {r.sin_avisar_pasa > 0 && <button className="btn-secundario" onClick={() => avisarA('PASA')}>Avisar a los que avanzan ({r.sin_avisar_pasa})</button>}
-          {r.sin_avisar_no_pasa > 0 && <button className="btn-secundario" onClick={() => avisarA('NO_PASA')}>Avisar a los que no avanzan ({r.sin_avisar_no_pasa})</button>}
-          <button className="btn-primario" disabled={!marcadas} onClick={() => setConfirmando(true)}>Confirmar avance ({marcadas})</button>
+      </div>
+
+      {/* ¿Quién avanza? Mismo panel en todas las etapas: 1 marcar, 2 revisar, 3 confirmar. */}
+      <div className="tarjeta overflow-hidden border-marca-200">
+        <div className="border-b border-marca-100 bg-marca-50 px-4 py-2">
+          <h2 className="text-sm font-semibold text-marca-800">¿Quién avanza{e.siguiente ? ` a ${e.siguiente.nombre}` : ''}?</h2>
+        </div>
+        <div className="grid gap-4 p-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500"><span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-marca-700 text-[11px] text-white">1</span>Marcar</p>
+            {criterio ? (
+              <>
+                <button className="btn-sugerir w-full" disabled={criterio.deshabilitado} onClick={criterio.accion} title={criterio.ayuda}>
+                  ✓ {criterio.texto}
+                </button>
+                <p className="text-xs text-gray-500">{criterio.ayuda}</p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500">En esta etapa se marca uno por uno con los botones <strong>Avanza / No avanza</strong> de la tabla.</p>
+            )}
+            {criterio && <p className="text-[11px] text-gray-400">También puedes cambiar cualquier marca a mano en la tabla.</p>}
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500"><span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-marca-700 text-[11px] text-white">2</span>Revisar</p>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {([['pasa', r.marcados_pasa, 'avanza', 'border-green-300 bg-green-50 text-green-800'],
+                ['no-pasa', r.marcados_no_pasa, 'no avanza', 'border-red-300 bg-red-50 text-red-800'],
+                ['sin-decidir', r.pendientes_de_decidir, 'sin decidir', 'border-gray-300 bg-white text-gray-700']] as const).map(([k, n, t, c]) => (
+                <button key={k} onClick={() => setFiltro(filtro === k ? 'todos' : k)} aria-pressed={filtro === k}
+                  className={`rounded-full border px-2.5 py-1 ${c} ${filtro === k ? 'ring-2 ring-gray-900' : ''}`}>
+                  <strong>{n}</strong> {t}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500">Haz clic en un grupo para verlo en la tabla.</p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500"><span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-marca-700 text-[11px] text-white">3</span>Confirmar</p>
+            <button className="btn-primario w-full" disabled={!marcadas} onClick={() => setConfirmando(true)}>Confirmar avance ({marcadas})</button>
+            {(r.sin_avisar_pasa > 0 || r.sin_avisar_no_pasa > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {r.sin_avisar_pasa > 0 && <button className="btn-secundario btn-chico" onClick={() => avisarA('PASA')}>Avisar a los que avanzan ({r.sin_avisar_pasa})</button>}
+                {r.sin_avisar_no_pasa > 0 && <button className="btn-secundario btn-chico" onClick={() => avisarA('NO_PASA')}>Avisar a los que no avanzan ({r.sin_avisar_no_pasa})</button>}
+              </div>
+            )}
+            {!marcadas && <p className="text-xs text-gray-500">Nada cambia hasta que confirmas.</p>}
+          </div>
         </div>
       </div>
 
