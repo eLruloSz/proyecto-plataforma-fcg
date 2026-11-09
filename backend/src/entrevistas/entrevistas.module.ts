@@ -1,5 +1,5 @@
 import {
-  Body, ConflictException, Controller, Delete, Get, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Post, Put,
+  Body, ConflictException, Controller, Delete, Get, Injectable, Module, NotFoundException, Param, ParseUUIDPipe, Post, Put, StreamableFile,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
@@ -9,6 +9,7 @@ import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { AuditoriaService } from '../common/auditoria.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
+import { DatosPauta, empaquetarPautas, generarPauta } from './pauta-docx';
 
 export const ESTADOS_ENTREVISTA = ['POR_SOLICITAR', 'SOLICITADA', 'CONFIRMADA', 'REALIZADA', 'CANCELADA', 'CONFLICTO'] as const;
 type EstadoEntrevista = (typeof ESTADOS_ENTREVISTA)[number];
@@ -115,6 +116,79 @@ export class EntrevistasService {
     return this.calendario(etapaId);
   }
 
+  // -------------------------------------------------------------------------
+  // Pauta de entrevista en Word (plantilla de la fundación)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Datos que el sistema ya tiene de cada estudiante de la etapa para rellenar la pauta.
+   * Si se indica `postulacionId`, solo ese estudiante. Misma regla de pertenencia que el calendario.
+   */
+  private async datosPauta(etapaId: string, postulacionId?: string): Promise<(DatosPauta & { apellidoPaterno: string; nombres: string })[]> {
+    const procesoId = await this.proceso.id();
+    const filas = await this.ds.query(
+      `SELECT p.codigo, p.posicion_curso, pe.nombres, pe.apellido_paterno, pe.apellido_materno,
+              l.codigo AS liceo_codigo, l.nombre AS liceo, l.comuna,
+              en.fecha_hora, f.tramo_rsh, f.rsh_pendiente, f.personas_hogar, f.personas_formulario, f.ingresos_hogar,
+              rp.posicion AS ranking, rp.rsh AS ranking_rsh
+         FROM postulaciones p
+         JOIN personas pe ON pe.id = p.persona_id
+         JOIN liceos l ON l.id = p.liceo_id
+         LEFT JOIN entrevistas en ON en.postulacion_id = p.id AND en.etapa_id = $1
+         LEFT JOIN resultados_etapa r ON r.postulacion_id = p.id AND r.etapa_id = $1
+         LEFT JOIN fichas_postulacion f ON f.postulacion_id = p.id
+         LEFT JOIN cargas c ON c.proceso_id = p.proceso_id AND c.tipo = 'RANKING'
+         LEFT JOIN ranking_postulacion rp ON rp.postulacion_id = p.id AND rp.carga_id = c.id
+        WHERE p.proceso_id = $2
+          AND (p.etapa_id = $1 OR en.postulacion_id IS NOT NULL OR (r.confirmado AND r.etapa_id = $1))
+          AND ($3::uuid IS NULL OR p.id = $3::uuid)
+        ORDER BY en.fecha_hora NULLS LAST, p.correlativo`,
+      [etapaId, procesoId, postulacionId ?? null]);
+    return filas.map((x: any) => {
+      // Tramo: lo digitado en la ficha; si no hay, lo que traía el Excel del ranking ("40%", "P").
+      const tramo = x.rsh_pendiente ? 'Pendiente'
+        : x.tramo_rsh ? `${x.tramo_rsh}%`
+        : x.ranking_rsh ? (String(x.ranking_rsh).toUpperCase() === 'P' ? 'Pendiente' : String(x.ranking_rsh)) : null;
+      return {
+        codigo: x.codigo,
+        nombreCompleto: [x.nombres, x.apellido_paterno, x.apellido_materno].filter(Boolean).join(' '),
+        establecimiento: `${x.liceo_codigo}. ${x.liceo}`,
+        comuna: x.comuna,
+        posicionNotas: x.posicion_curso,
+        rankingPreseleccion: x.ranking,
+        fechaHora: x.fecha_hora,
+        // N° de personas del hogar: lo que declaró el estudiante; si falta, el de la cartola.
+        personasHogar: x.personas_formulario ?? x.personas_hogar,
+        tramoRsh: tramo,
+        ingresoMensual: x.ingresos_hogar,
+        apellidoPaterno: x.apellido_paterno,
+        nombres: x.nombres,
+      };
+    });
+  }
+
+  private nombreArchivoPauta(d: { codigo: string; apellidoPaterno: string; nombres: string }) {
+    return `Pauta ${d.codigo} ${d.apellidoPaterno} ${d.nombres}.docx`.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ');
+  }
+
+  /** Pauta de un estudiante. */
+  async pauta(etapaId: string, postulacionId: string) {
+    await this.etapa(etapaId);
+    const [d] = await this.datosPauta(etapaId, postulacionId);
+    if (!d) throw new NotFoundException('Estudiante no encontrado en esta etapa.');
+    return { nombre: this.nombreArchivoPauta(d), buffer: await generarPauta(d) };
+  }
+
+  /** Pautas de todos los estudiantes de la etapa, en un .zip (ordenadas por fecha de entrevista). */
+  async pautasZip(etapaId: string) {
+    const etapa = await this.etapa(etapaId);
+    const todos = await this.datosPauta(etapaId);
+    if (!todos.length) throw new NotFoundException('No hay estudiantes en esta etapa.');
+    const pautas: { nombre: string; contenido: Buffer }[] = [];
+    for (const d of todos) pautas.push({ nombre: this.nombreArchivoPauta(d), contenido: await generarPauta(d) });
+    return { nombre: `Pautas de entrevista - ${etapa.nombre}.zip`, buffer: await empaquetarPautas(pautas), cantidad: pautas.length };
+  }
+
   async bloquear(etapaId: string, dto: BloqueoDto, usuarioId: string) {
     await this.etapa(etapaId);
     try {
@@ -143,6 +217,9 @@ export class EntrevistasService {
   }
 }
 
+/** Cabecera de descarga que admite tildes y ñ en el nombre. */
+const adjunto = (nombre: string) => `attachment; filename*=UTF-8''${encodeURIComponent(nombre)}`;
+
 @ApiTags('entrevistas')
 @ApiBearerAuth()
 @Controller('entrevistas/:etapaId')
@@ -152,6 +229,25 @@ export class EntrevistasController {
   @Get()
   calendario(@Param('etapaId', ParseUUIDPipe) etapaId: string) {
     return this.svc.calendario(etapaId);
+  }
+
+  /** Todas las pautas de la etapa en un .zip. */
+  @Get('pautas')
+  async pautas(@Param('etapaId', ParseUUIDPipe) etapaId: string) {
+    const r = await this.svc.pautasZip(etapaId);
+    return new StreamableFile(r.buffer, { type: 'application/zip', disposition: adjunto(r.nombre) });
+  }
+
+  /** Pauta de un estudiante, en Word. */
+  @Get('estudiantes/:postulacionId/pauta')
+  async pauta(
+    @Param('etapaId', ParseUUIDPipe) etapaId: string,
+    @Param('postulacionId', ParseUUIDPipe) postulacionId: string,
+  ) {
+    const r = await this.svc.pauta(etapaId, postulacionId);
+    return new StreamableFile(r.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', disposition: adjunto(r.nombre),
+    });
   }
 
   @Put('estudiantes/:postulacionId')
