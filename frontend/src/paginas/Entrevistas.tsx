@@ -111,6 +111,8 @@ export function Entrevistas() {
           <h1 className="titulo">Calendario de entrevistas <span className="font-normal text-gray-500">· {data.etapa.nombre}</span></h1>
           <p className="text-sm text-gray-500">Haz clic en un bloque libre para agendar, o en una entrevista para cambiar su estado, moverla o comentar.</p>
         </div>
+        <BotonDescarga ruta={`/entrevistas/${data.etapa.id}/pautas`} nombre={`Pautas de entrevista - ${data.etapa.nombre}.zip`}
+          texto="Descargar todas las pautas (Word)" titulo="Un .zip con la pauta de cada estudiante de la etapa, rellenada con los datos que ya tiene el sistema" />
       </div>
 
       {/* Leyenda con totales */}
@@ -250,6 +252,19 @@ function useGuardarCalendario(etapaId: string) {
   };
 }
 
+/** Descarga un archivo del servidor (con el token de la sesión) y avisa si falla. */
+function BotonDescarga({ ruta, nombre, texto, titulo }: { ruta: string; nombre: string; texto: string; titulo?: string }) {
+  const avisar = useAviso();
+  const [bajando, setBajando] = useState(false);
+  const bajar = async () => {
+    setBajando(true);
+    try { await api.descargar(ruta, nombre); }
+    catch (e) { avisar((e as Error).message, 'error'); }
+    finally { setBajando(false); }
+  };
+  return <button className="btn-secundario btn-chico" disabled={bajando} onClick={bajar} title={titulo}>{bajando ? 'Preparando…' : `⬇ ${texto}`}</button>;
+}
+
 function EditarEntrevista({ calendario, estudiante: e, diaInicial, horaInicial, onCerrar }: {
   calendario: CalendarioEntrevistas; estudiante: EstudianteAgenda; diaInicial?: string; horaInicial?: string; onCerrar: () => void;
 }) {
@@ -283,6 +298,11 @@ function EditarEntrevista({ calendario, estudiante: e, diaInicial, horaInicial, 
         <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
           <div><span className="font-mono">{e.codigo}</span> · {e.liceo_codigo}. {e.liceo}</div>
           <div>{e.email ?? 'sin email'} · {e.telefono ?? 'sin teléfono'}</div>
+          <div className="mt-2">
+            <BotonDescarga ruta={`/entrevistas/${calendario.etapa.id}/estudiantes/${e.id}/pauta`}
+              nombre={`Pauta ${e.codigo} ${e.apellido_paterno} ${e.nombres}.docx`} texto="Descargar pauta (Word)"
+              titulo="Pauta de entrevista con los datos de este estudiante" />
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
