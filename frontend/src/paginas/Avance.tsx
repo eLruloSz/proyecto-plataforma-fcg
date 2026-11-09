@@ -233,6 +233,7 @@ export function Avance() {
           <p className="text-sm text-gray-500">{AYUDA[tipoEtapa(e)]} Nada cambia hasta que confirmas.</p>
         </div>
         <div className="flex gap-2">
+          <BotonExcel etapaId={e.id} nombre={`Etapa ${e.orden} - ${e.nombre}.xlsx`} />
           <button className="btn-secundario" onClick={() => setConfigEtapas(true)}>Configurar etapas</button>
           {e.id === actual?.id && (
             <button className="btn-secundario" onClick={() => setTerminando({})}>{e.siguiente ? 'Terminar etapa' : 'Última etapa'}</button>
@@ -517,5 +518,26 @@ export function Avance() {
       )}
       <p className="text-xs text-gray-400">¿Buscas a un estudiante en particular? Revisa <Link to="/invitados" className="underline">Invitados</Link>.</p>
     </div>
+  );
+}
+
+/**
+ * Descarga el Excel de la etapa: sus estudiantes con los datos que se tienen hasta esa etapa, más las hojas
+ * del Listado Final de Invitados. Funciona también al consultar una etapa terminada.
+ */
+function BotonExcel({ etapaId, nombre }: { etapaId: string; nombre: string }) {
+  const avisar = useAviso();
+  const [bajando, setBajando] = useState(false);
+  const bajar = async () => {
+    setBajando(true);
+    try { await api.descargar(`/exportar/etapa/${etapaId}/excel`, nombre); }
+    catch (err) { avisar((err as Error).message, 'error'); }
+    finally { setBajando(false); }
+  };
+  return (
+    <button className="btn-secundario" disabled={bajando} onClick={bajar}
+      title="Excel con los estudiantes de esta etapa y los datos hasta aquí, más el Listado Final de Invitados">
+      {bajando ? 'Preparando…' : '⬇ Exportar a Excel'}
+    </button>
   );
 }

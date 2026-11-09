@@ -20,7 +20,10 @@ export function tipoEtapa(e: Pick<Etapa, 'clave' | 'orden'>): TipoEtapa {
 
 export interface ItemMenu { a: string; texto: string }
 
-/** Lo que se trabaja en cada etapa (el menú muestra solo esto, además de Inicio y Comunicación). */
+/**
+ * Lo que se trabaja en cada etapa (el menú muestra solo esto, además de Inicio, Comunicación y
+ * Seguimiento por liceo, que se ven en todas las etapas y viven en Layout.tsx).
+ */
 export function menuDeEtapa(e: Etapa): ItemMenu[] {
   const avance = `/avance/${e.id}`;
   switch (tipoEtapa(e)) {
@@ -28,7 +31,6 @@ export function menuDeEtapa(e: Etapa): ItemMenu[] {
       return [
         { a: '/liceos', texto: 'Liceos y nóminas' },
         { a: '/invitados', texto: 'Invitados' },
-        { a: '/seguimiento', texto: 'Seguimiento por liceo' },
         { a: avance, texto: 'Quién avanza' },
       ];
     case 'ENCUENTRO':
@@ -39,7 +41,6 @@ export function menuDeEtapa(e: Etapa): ItemMenu[] {
       return [
         { a: `/entrevistas/${e.id}`, texto: 'Calendario de entrevistas' },
         { a: avance, texto: 'Resultados' },
-        { a: '/seguimiento', texto: 'Seguimiento por liceo' },
       ];
     default:
       return [{ a: avance, texto: 'Estudiantes de la etapa' }];

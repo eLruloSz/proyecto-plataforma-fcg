@@ -173,8 +173,9 @@ export function Layout() {
                 </div>
               </div>
             )}
-            <div className="mt-3 border-t border-gray-200 pt-3">
+            <div className="mt-3 space-y-0.5 border-t border-gray-200 pt-3">
               <NavLink to="/comunicacion" className={enlace}>Comunicación</NavLink>
+              <NavLink to="/seguimiento" className={enlace}>Seguimiento por liceo</NavLink>
             </div>
           </nav>
           <div className="px-2 pb-2">
