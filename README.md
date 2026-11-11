@@ -62,6 +62,7 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `13_plantilla_invitacion_lista.sql` | Plantilla «Invitación a postular (listado para la contraparte)»: solo los nombres de los invitados + enlace al formulario |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
+Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
 
 ## Usuarios y acceso
 

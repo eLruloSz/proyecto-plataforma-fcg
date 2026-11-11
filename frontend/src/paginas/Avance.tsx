@@ -9,7 +9,7 @@ import { FechasEncuentro, fechaEncuentro, InscribirEnBloque, RegistrarAsistencia
 import { ImportarContactos } from './ImportarContactos';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
-import { CeldaFicha, CeldasRanking, COLUMNAS_RANKING, EncabezadosRanking, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
+import { CeldaFicha, CeldaLugar, CeldasPuntajes, COLUMNAS_RANKING, EncabezadoLugar, EncabezadosPuntajes, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
 import { ESTADOS } from './Entrevistas';
 
 type Fila = VistaAvance['estudiantes'][number];
@@ -427,8 +427,10 @@ export function Avance() {
         <table className="tabla">
           <thead>
             <tr>
-              {esPre && <EncabezadosRanking />}
-              <th>Id</th><th>Estudiante</th><th>Liceo</th><th className="text-right">Prom.</th>
+              {esPre && <EncabezadoLugar />}
+              {esPre ? <><th>Estudiante</th><th>Id</th></> : <><th>Id</th><th>Estudiante</th></>}
+              <th>Liceo</th><th className="text-right">Prom.</th>
+              {esPre && <EncabezadosPuntajes />}
               {esPre && <th title="Datos del hogar según la cartola RSH">Hogar (ficha)</th>}
               {esEntrevista && <th>Entrevista</th>}
               {esEncuentro && <><th className="min-w-[170px]">Fecha del encuentro</th><th>Asistió</th></>}
@@ -444,14 +446,16 @@ export function Avance() {
               const fondo = f.confirmado ? 'bg-gray-50 text-gray-500' : f.resultado === 'PASA' ? 'bg-green-50/70' : f.resultado === 'NO_PASA' ? 'bg-red-50/60' : '';
               return (
                 <tr key={f.id} className={fondo}>
-                  {esPre && <CeldasRanking r={f.ranking} />}
-                  <td className="font-mono text-xs">{f.codigo}</td>
+                  {esPre && <CeldaLugar r={f.ranking} />}
+                  {!esPre && <td className="font-mono text-xs">{f.codigo}</td>}
                   <td className={`whitespace-nowrap ${f.resultado === 'NO_PASA' ? 'line-through decoration-red-400' : ''}`}>
                     {f.apellido_paterno} {f.apellido_materno}, {f.nombres}
                     {!f.email && <span className="ml-1 text-[11px] text-red-700">sin email</span>}
                   </td>
+                  {esPre && <td className="font-mono text-xs">{f.codigo}</td>}
                   <td className="max-w-[160px] truncate text-gray-600" title={f.liceo}>{f.liceo}</td>
                   <td className="text-right tabular-nums">{nota(f.promedio)}</td>
+                  {esPre && <CeldasPuntajes r={f.ranking} />}
                   {esPre && <td><CeldaFicha f={f} onAbrir={() => setFichaDe(f)} /></td>}
                   {esEncuentro && (
                     <>

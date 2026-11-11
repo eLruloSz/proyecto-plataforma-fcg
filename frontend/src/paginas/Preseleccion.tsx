@@ -9,16 +9,18 @@ type Fila = VistaAvance['estudiantes'][number];
 // Ranking en la tabla de la etapa
 // ---------------------------------------------------------------------------
 
-/** Encabezados de las columnas del ranking (con el máximo de cada puntaje). */
+/** Columnas del ranking: "Lugar" va al inicio (antes del estudiante) y los puntajes a la derecha. */
 export const COLUMNAS_RANKING = 6;
-export function EncabezadosRanking() {
+export function EncabezadoLugar() {
+  return <th title="Lugar en el ranking general">Lugar</th>;
+}
+export function EncabezadosPuntajes() {
   return (
     <>
-      <th title="Lugar en el ranking general">Lugar</th>
-      <th className="text-right" title="Puntaje total (máx. 110)">Total</th>
-      <th className="text-right" title="Puntaje académico (máx. 35)">Acad. <span className="font-normal text-gray-400">/35</span></th>
-      <th className="text-right" title="Puntaje socioeconómico (máx. 50) = I.P.C. + nivel educacional de los padres + vulnerabilidad">Socioec. <span className="font-normal text-gray-400">/50</span></th>
-      <th className="text-right" title="Compromiso y participación (máx. 25)">Comp. <span className="font-normal text-gray-400">/25</span></th>
+      <th className="text-right" title="Puntaje total (máx. 110 = 35 + 50 + 25)">Total <span className="font-normal text-gray-400">/110</span></th>
+      <th className="text-right" title="Puntaje académico (máx. 35): según el lugar del estudiante en su liceo (1° → 35, 2° → 30, 3° → 25)">Académico <span className="font-normal text-gray-400">/35</span></th>
+      <th className="text-right" title="Puntaje socioeconómico (máx. 50) = I.P.C. (máx. 30) + nivel educacional de los padres (máx. 15) + vulnerabilidad (máx. 5)">Socioeconómico <span className="font-normal text-gray-400">/50</span></th>
+      <th className="text-right" title="Compromiso y participación (máx. 25)">Compromiso <span className="font-normal text-gray-400">/25</span></th>
       <th title="RSH según el Excel del ranking">RSH</th>
     </>
   );
@@ -44,21 +46,40 @@ export function EtiquetaRsh({ rsh }: { rsh: string | null }) {
 
 const p1 = (n: number | null | undefined) => (n === null || n === undefined ? '—' : String(Math.round(n * 10) / 10).replace('.', ','));
 
-/** Las celdas del ranking de un estudiante (o "sin ranking" ocupando todas). */
-export function CeldasRanking({ r }: { r: Fila['ranking'] }) {
-  if (!r) return <td colSpan={COLUMNAS_RANKING} className="text-xs text-gray-400">sin ranking</td>;
+/** Lugar en su liceo como etiqueta: 1° dorado, 2° plateado, 3° bronce. */
+function LugarLiceo({ n }: { n: number }) {
+  const estilo = n === 1 ? 'border-amber-300 bg-amber-50 text-amber-800'
+    : n === 2 ? 'border-slate-300 bg-slate-50 text-slate-700'
+    : n === 3 ? 'border-orange-300 bg-orange-50 text-orange-800'
+    : 'border-gray-200 bg-white text-gray-600';
+  return (
+    <span className={`mt-1 inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${estilo}`} title={`${n}° lugar en notas dentro de su liceo`}>
+      {n}° en su liceo
+    </span>
+  );
+}
+
+/** Celda "Lugar" (va antes del nombre). */
+export function CeldaLugar({ r }: { r: Fila['ranking'] }) {
+  return <td className="font-semibold tabular-nums">{r?.posicion ? `${r.posicion}°` : <span className="text-gray-400">—</span>}</td>;
+}
+
+/** Celdas de puntajes (van a la derecha), o "sin ranking" ocupando todas. */
+export function CeldasPuntajes({ r }: { r: Fila['ranking'] }) {
+  if (!r) return <td colSpan={COLUMNAS_RANKING - 1} className="text-xs text-gray-400">sin ranking</td>;
   return (
     <>
-      <td className="font-semibold tabular-nums">{r.posicion ?? '—'}°</td>
       <td className="text-right font-semibold tabular-nums">{p1(r.puntaje_total)}</td>
-      <td className="text-right tabular-nums" title={r.notas !== null ? `Notas ${p1(r.notas)}${r.ranking_notas ? ` · ${r.ranking_notas}° de su liceo` : ''}` : undefined}>
-        {p1(r.puntaje_academico)}
-        {r.ranking_notas ? <div className="text-[11px] text-gray-400">{r.ranking_notas}° liceo</div> : null}
+      <td className="text-right tabular-nums" title={r.notas !== null ? `Notas ${p1(r.notas)}` : undefined}>
+        <div>{p1(r.puntaje_academico)}</div>
+        {r.ranking_notas ? <LugarLiceo n={r.ranking_notas} /> : null}
       </td>
       <td className="text-right tabular-nums">
-        {p1(r.puntaje_socioeconomico)}
-        <div className="whitespace-nowrap text-[11px] text-gray-400" title="I.P.C. · Nivel educacional padres · Vulnerabilidad">
-          IPC {p1(r.puntaje_ipc)} · Pad. {p1(r.puntaje_nivel_padres)} · Vul. {p1(r.puntaje_vulnerabilidad)}
+        <div>{p1(r.puntaje_socioeconomico)}</div>
+        <div className="whitespace-nowrap text-[11px] text-gray-400">
+          <span title="Puntaje I.P.C. (máx. 30)">IPC {p1(r.puntaje_ipc)}/30</span>
+          {' · '}<span title="Nivel educacional de los padres (máx. 15)">Padres {p1(r.puntaje_nivel_padres)}/15</span>
+          {' · '}<span title="Vulnerabilidad (máx. 5)">Vul. {p1(r.puntaje_vulnerabilidad)}/5</span>
         </div>
       </td>
       <td className="text-right tabular-nums">{p1(r.puntaje_compromiso)}</td>

@@ -210,10 +210,10 @@ export class ImportarContactosService {
         if (x!.confirmacion) {
           await em.query(
             `UPDATE postulaciones SET
-               confirmacion = $2,
-               confirmacion_en = CASE WHEN confirmacion = $2 THEN confirmacion_en ELSE NOW() END,
+               confirmacion = $2::varchar,
+               confirmacion_en = CASE WHEN confirmacion = $2::varchar THEN confirmacion_en ELSE NOW() END,
                estado = CASE WHEN estado IN ('INVITADO', 'CONFIRMADO', 'DESISTIO')
-                             THEN CASE $2 WHEN 'CONFIRMADO' THEN 'CONFIRMADO' ELSE 'DESISTIO' END
+                             THEN CASE $2::varchar WHEN 'CONFIRMADO' THEN 'CONFIRMADO' ELSE 'DESISTIO' END
                              ELSE estado END
              WHERE id = $1`,
             [x!.postulacion_id, x!.confirmacion]);
