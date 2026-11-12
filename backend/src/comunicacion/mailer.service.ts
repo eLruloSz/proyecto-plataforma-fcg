@@ -15,15 +15,22 @@ export interface Correo {
  * todos los correos y los muestra en http://localhost:8025 sin enviarlos.
  * En producción se configura el SMTP del proveedor (ej. Brevo).
  * Si SMTP_HOST no está definido, funciona en modo simulación (solo registra).
+ *
+ * MAIL_REDIRIGIR_A: si está definido, TODOS los correos se envían a esa casilla
+ * (y no al destinatario real), con el destinatario original en el asunto y al
+ * inicio del cuerpo. Sirve para probar con un SMTP real sin escribirle a los
+ * liceos ni a los estudiantes. En producción debe quedar vacío.
  */
 @Injectable()
 export class MailerService {
   private readonly log = new Logger('Correo');
   private readonly transporte: nodemailer.Transporter | null;
   private readonly remitente: string;
+  private readonly redirigirA: string | null;
 
   constructor(cfg: ConfigService) {
     this.remitente = cfg.get('MAIL_FROM') ?? 'Fundación Carmen Goudie <no-responder@localhost>';
+    this.redirigirA = cfg.get<string>('MAIL_REDIRIGIR_A')?.trim() || null;
     const host = cfg.get<string>('SMTP_HOST');
     this.transporte = host
       ? nodemailer.createTransport({
@@ -34,6 +41,7 @@ export class MailerService {
         })
       : null;
     if (!this.transporte) this.log.warn('SMTP_HOST no definido: los correos NO se envían (modo simulación).');
+    else if (this.redirigirA) this.log.warn(`MAIL_REDIRIGIR_A activo: todos los correos se envían a ${this.redirigirA}.`);
   }
 
   get modoSimulacion() {
@@ -45,13 +53,17 @@ export class MailerService {
       this.log.log(`[simulación] → ${c.para}: ${c.asunto}`);
       return { idExterno: `simulado-${Date.now()}-${Math.random().toString(36).slice(2)}` };
     }
+    const desvio = this.redirigirA ? `[Prueba — para: ${c.para}] ` : '';
+    const texto = this.redirigirA
+      ? `(Correo de prueba desviado. Destinatario real: ${c.para})\n\n${c.texto}`
+      : c.texto;
     const info = await this.transporte.sendMail({
       from: this.remitente,
-      to: c.para,
+      to: this.redirigirA ?? c.para,
       replyTo: c.responderA,
-      subject: c.asunto,
-      text: c.texto,
-      html: textoAHtml(c.texto),
+      subject: desvio + c.asunto,
+      text: texto,
+      html: textoAHtml(texto),
       attachments: c.adjuntos?.map((a) => ({ filename: a.nombre, content: a.contenido, contentType: a.tipo ?? undefined })),
     });
     return { idExterno: limpiarMessageId(info.messageId) };

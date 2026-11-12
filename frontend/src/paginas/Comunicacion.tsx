@@ -4,6 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, EnvioDetalle, EnvioResumen, FiltroEtapa, GRUPOS, Plantilla, PROPOSITOS, TipoFiltroEtapa } from '../api';
 import { Cargando, ErrorCarga, Etiqueta, fecha, Modal, useAviso, Vacio } from '../ui';
 import { Redactor } from './Redactor';
+import { useProceso } from '../Layout';
+
+/** "Etapa 3 · Preselección N°1" (o "Cualquier etapa"). */
+function nombreEtapa(orden: number | null, etapas: { orden: number; nombre: string }[] | undefined) {
+  if (orden === null) return 'Cualquier etapa';
+  const e = etapas?.find((x) => x.orden === orden);
+  return e ? `Etapa ${orden} · ${e.nombre}` : `Etapa ${orden}`;
+}
 
 function Progreso({ hecho, total }: { hecho: number; total: number }) {
   return (
@@ -51,7 +59,11 @@ function ListaEnvios() {
 function EditarPlantilla({ plantilla, onCerrar }: { plantilla: Plantilla | null; onCerrar: () => void }) {
   const qc = useQueryClient();
   const avisar = useAviso();
-  const [f, setF] = useState({ nombre: plantilla?.nombre ?? '', proposito: plantilla?.proposito ?? 'OTRO', asunto: plantilla?.asunto ?? '', cuerpo: plantilla?.cuerpo ?? '' });
+  const { data: proceso } = useProceso();
+  const [f, setF] = useState({
+    nombre: plantilla?.nombre ?? '', proposito: plantilla?.proposito ?? 'OTRO', asunto: plantilla?.asunto ?? '', cuerpo: plantilla?.cuerpo ?? '',
+    etapaOrden: plantilla?.etapa_orden ?? null as number | null,
+  });
   const [actual, setActual] = useState<Plantilla | null>(plantilla);
   const [error, setError] = useState('');
   const refrescar = () => qc.invalidateQueries({ queryKey: ['plantillas'] });
@@ -78,17 +90,23 @@ function EditarPlantilla({ plantilla, onCerrar }: { plantilla: Plantilla | null;
       pie={<><button className="btn-secundario" onClick={onCerrar}>{actual && !plantilla ? 'Listo' : 'Cancelar'}</button>
         <button className="btn-primario" disabled={guardar.isPending} onClick={enviar}>{actual ? 'Guardar cambios' : 'Crear plantilla'}</button></>}>
       <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div><label className="label" htmlFor="pn">Nombre</label><input id="pn" className="input" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></div>
           <div><label className="label" htmlFor="pp">Tipo de correo</label>
             <select id="pp" className="input" value={f.proposito} onChange={(e) => setF({ ...f, proposito: e.target.value })}>
               {Object.entries(PROPOSITOS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
             </select></div>
+          <div><label className="label" htmlFor="pe">Etapa</label>
+            <select id="pe" className="input" value={f.etapaOrden ?? ''} onChange={(e) => setF({ ...f, etapaOrden: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">Cualquier etapa</option>
+              {proceso?.etapas.map((e) => <option key={e.orden} value={e.orden}>{e.orden}. {e.nombre}</option>)}
+            </select></div>
         </div>
+        <p className="-mt-1 text-xs text-gray-400">Si el nombre termina en (contrapartes), (directivos) o (postulantes), el correo parte dirigido a ese grupo.</p>
         <div><label className="label" htmlFor="pa">Asunto</label><input id="pa" className="input" value={f.asunto} onChange={(e) => setF({ ...f, asunto: e.target.value })} /></div>
         <div><label className="label" htmlFor="pc">Cuerpo</label>
           <textarea id="pc" rows={10} className="input font-mono text-[13px]" value={f.cuerpo} onChange={(e) => setF({ ...f, cuerpo: e.target.value })} />
-          <p className="mt-1 text-xs text-gray-400">Variables: {'{{nombre}} {{cargo}} {{liceo}} {{anio}} {{firma}} {{codigo}} {{curso}}'}</p></div>
+          <p className="mt-1 text-xs text-gray-400">Variables: {'{{nombre}} {{cargo}} {{liceo}} {{anio}} {{firma}} {{codigo}} {{curso}} {{documentos_pendientes}}'} · a liceos: {'{{estudiantes}} {{lista_estudiantes}}'}. Las fechas quedan como [fecha]: complétalas antes de enviar.</p></div>
         <div>
           <span className="label">Adjuntos fijos (se envían siempre con esta plantilla)</span>
           {!actual ? <p className="text-xs text-gray-400">Crea la plantilla para poder agregarle adjuntos.</p> : (
@@ -113,6 +131,7 @@ function EditarPlantilla({ plantilla, onCerrar }: { plantilla: Plantilla | null;
 function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['plantillas'], queryFn: () => api.get<Plantilla[]>('/comunicacion/plantillas') });
+  const { data: proceso } = useProceso();
   const [editando, setEditando] = useState<Plantilla | null | 'nueva'>(null);
   const [borrando, setBorrando] = useState<Plantilla | null>(null);
   const borrar = useMutation({
@@ -124,8 +143,12 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
     <div className="space-y-3">
       <div className="flex justify-end"><button className="btn-secundario" onClick={() => setEditando('nueva')}>+ Nueva plantilla</button></div>
       <div className="tarjeta divide-y divide-gray-100">
-        {data?.map((p) => (
-          <div key={p.id} className="flex items-center justify-between gap-4 px-4 py-3">
+        {data?.map((p, i) => (
+          <div key={p.id}>
+          {(i === 0 || data[i - 1].etapa_orden !== p.etapa_orden) && (
+            <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">{nombreEtapa(p.etapa_orden, proceso?.etapas)}</div>
+          )}
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div className="min-w-0">
               <div className="text-sm font-medium text-gray-900">{p.nombre}</div>
               <div className="truncate text-xs text-gray-500">{PROPOSITOS[p.proposito]} · {p.asunto}{p.adjuntos.length ? ` · 📎 ${p.adjuntos.length}` : ''}</div>
@@ -135,6 +158,7 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
               <button className="btn-secundario btn-chico" onClick={() => setEditando(p)}>Editar</button>
               <button className="btn-secundario btn-chico" onClick={() => setBorrando(p)} aria-label={`Eliminar ${p.nombre}`}>✕</button>
             </div>
+          </div>
           </div>
         ))}
       </div>
@@ -163,12 +187,33 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
 const TIPOS_FILTRO: TipoFiltroEtapa[] = ['EN_ETAPA', 'FALTAN_REQUISITOS', 'PASA', 'NO_PASA'];
 
 /** Plantilla sugerida para cada caso (si existe). */
-function plantillaSugerida(plantillas: Plantilla[], proposito: string | null, tipo: TipoFiltroEtapa | undefined) {
-  if (tipo === 'PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /avanza|pasa/i.test(p.nombre));
-  if (tipo === 'NO_PASA') return plantillas.find((p) => p.proposito === 'AVISO_RESULTADO' && /no contin|no avanza|no pasa/i.test(p.nombre));
-  if (tipo === 'FALTAN_REQUISITOS') return plantillas.find((p) => /documentos pendientes/i.test(p.nombre));
-  if (proposito) return plantillas.find((p) => p.proposito === proposito);
-  return undefined;
+/**
+ * Plantilla que se propone al redactar. Entre las que sirven, primero la de la
+ * etapa (etapaOrden); sin etapa conocida, primero las asociadas a alguna etapa
+ * (las del proceso real) y después las genéricas.
+ */
+function plantillaSugerida(plantillas: Plantilla[], proposito: string | null, tipo: TipoFiltroEtapa | undefined, etapaOrden?: number) {
+  const negativa = (p: Plantilla) => /no contin|no avanza|no pasa|no seleccion/i.test(p.nombre);
+  const candidatas = tipo === 'PASA' ? plantillas.filter((p) => p.proposito === 'AVISO_RESULTADO' && !negativa(p))
+    : tipo === 'NO_PASA' ? plantillas.filter((p) => p.proposito === 'AVISO_RESULTADO' && negativa(p))
+    : tipo === 'FALTAN_REQUISITOS' ? plantillas.filter((p) => /documentos pendientes/i.test(p.nombre))
+    : proposito ? plantillas.filter((p) => p.proposito === proposito)
+    : [];
+  const prioridad = (p: Plantilla) => etapaOrden !== undefined
+    ? (p.etapa_orden === etapaOrden ? 0 : p.etapa_orden === null ? 1 : 2)
+    : (p.etapa_orden !== null ? 0 : 1);
+  // Con etapa conocida, una plantilla de OTRA etapa no se propone (sería el texto equivocado).
+  return [...candidatas].sort((a, b) => prioridad(a) - prioridad(b)).find((p) => etapaOrden === undefined || prioridad(p) < 2);
+}
+
+/** Grupo al que va un correo hecho desde una plantilla. */
+function grupoDePlantilla(p: Plantilla): string {
+  if (/\(postulantes\)\s*$/i.test(p.nombre)) return 'POSTULANTES';
+  if (/\(directivos\)\s*$/i.test(p.nombre)) return 'DIRECTORES';
+  if (/\(contrapartes\)\s*$/i.test(p.nombre)) return 'CONTRAPARTES';
+  // Correos con la lista de estudiantes de cada liceo van a las contrapartes.
+  if (/\{\{\s*(lista_)?estudiantes\s*\}\}/.test(p.cuerpo)) return 'CONTRAPARTES';
+  return ['INVITACION_ESTUDIANTES', 'AVISO_RESULTADO'].includes(p.proposito) ? 'POSTULANTES' : 'CONTRAPARTES';
 }
 export function Comunicacion() {
   const [params, setParams] = useSearchParams();
@@ -182,6 +227,7 @@ export function Comunicacion() {
     queryFn: () => api.get<EnvioDetalle>(`/comunicacion/envios/${idOrigen}`),
   });
   const { data: plantillas } = useQuery({ queryKey: ['plantillas'], queryFn: () => api.get<Plantilla[]>('/comunicacion/plantillas') });
+  const { data: proceso } = useProceso();
 
   const redactando = params.has('nuevo') || params.has('liceo') || params.has('plantilla') || params.has('proposito') || !!idOrigen;
   if (redactando) {
@@ -193,12 +239,14 @@ export function Comunicacion() {
       : undefined;
     const sugerir = !!filtroEtapa || params.has('proposito');
     if (sugerir && !plantillas) return <Cargando />;
+    if (filtroEtapa && !proceso) return <Cargando />;
+    const etapaOrden = filtroEtapa ? proceso?.etapas.find((e) => e.id === filtroEtapa.etapaId)?.orden : undefined;
     const plantilla = params.get('plantilla')
       ? plantillas?.find((p) => p.id === params.get('plantilla'))
-      : sugerir ? plantillaSugerida(plantillas ?? [], params.get('proposito'), filtroEtapa?.tipo) : undefined;
+      : sugerir ? plantillaSugerida(plantillas ?? [], params.get('proposito'), filtroEtapa?.tipo, etapaOrden) : undefined;
     // Desde una plantilla, se arma un "envío base" con su contenido.
     const desdePlantilla = plantilla ? {
-      id: '', grupo: liceo ? 'LICEO' : ['INVITACION_ESTUDIANTES', 'AVISO_RESULTADO'].includes(plantilla.proposito) ? 'POSTULANTES' : 'CONTRAPARTES', proposito: plantilla.proposito,
+      id: '', grupo: liceo ? 'LICEO' : filtroEtapa ? 'POSTULANTES' : grupoDePlantilla(plantilla), proposito: plantilla.proposito,
       asunto: plantilla.asunto, cuerpo: plantilla.cuerpo, plantilla_id: plantilla.id,
       adjuntos: plantilla.adjuntos.map((a) => ({ id: a.id, nombre_original: a.nombre, tamano_bytes: a.tamano })),
     } as unknown as EnvioDetalle : undefined;

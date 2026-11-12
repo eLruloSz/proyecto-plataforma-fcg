@@ -5,7 +5,7 @@ inventados, para recorrer la plataforma de punta a punta:
 
     1_nominas/nomina_liceo_XX.xlsx         nóminas de notas (27 liceos; el 12 no participa)
     2_Forms_confirmacion_interes_2026.xlsx respuestas del formulario 1 (Microsoft Forms)
-    3_Ranking_Preseleccion_N1_2026.xlsx    ranking que calcula la fundación (sin "Finalistas")
+    3_Ranking_Preseleccion_N1_2026.xlsx    ranking que calcula la fundación (sobre 100, sin "Finalistas")
     GUIA_prueba_completa.xlsx              paso a paso y quién avanza / no avanza en cada etapa
 
 Los Id. del ranking y de la guía son los que entrega el sistema SOLO SI se
@@ -535,7 +535,7 @@ class Generador:
         # Puntajes
         for a in enRanking:
             a['comp'] = r.choices([0, 7, 13, 19, 25], [5, 15, 30, 30, 20])[0]
-            a['nivel'] = r.choices([0, 2.5, 5, 7.5, 10, 12.5, 15], [4, 8, 18, 25, 22, 15, 8])[0]
+            a['nivel'] = r.choices([0, 1, 2, 3, 4, 5], [5, 10, 20, 28, 22, 15])[0]   # máx. 5
             a['vul'] = 1 if r.random() < 0.15 else 0
         for l in self.liceos:
             if not l['participa']:
@@ -559,11 +559,11 @@ class Generador:
             altos = [a for a in orden[:CUPO_ETAPA3] if a['tramo'] and a['tramo'] > 50]
             if altos:
                 for a in altos:
-                    a['comp'] = max(0, a['comp'] - 7); a['nivel'] = max(0, a['nivel'] - 2.5)
+                    a['comp'] = max(0, a['comp'] - 7); a['nivel'] = max(0, a['nivel'] - 1)
                 continue
             if orden[CUPO_ETAPA3 - 1]['total'] == orden[CUPO_ETAPA3]['total']:
                 x = orden[CUPO_ETAPA3]
-                x['nivel'] = max(0, x['nivel'] - 2.5) if x['nivel'] else x['nivel']
+                x['nivel'] = max(0, x['nivel'] - 1) if x['nivel'] else x['nivel']
                 if not x['nivel']:
                     x['comp'] = max(0, x['comp'] - 6)
                 continue
@@ -608,7 +608,7 @@ class Generador:
             if a is cancela:
                 a['eval4'] = -1
                 continue
-            a['eval4'] = round(0.55 * a['total'] / 110 * 100 + 0.45 * r.uniform(40, 100), 2)
+            a['eval4'] = round(0.55 * a['total'] + 0.45 * r.uniform(40, 100), 2)
         orden = sorted([a for a in e4 if a is not cancela], key=lambda a: -a['eval4'])
         for i, a in enumerate(orden):
             fuerte = i < CUPO_ETAPA4
@@ -756,7 +756,7 @@ def escribir_ranking(g, ruta):
     def hoja(nombre, f_socio, f_comp, max_socio, max_comp):
         ws = wb.create_sheet(nombre)
         enc = ['n°', 'Estab.', 'Id.', 'Apellido Paterno', 'Apellido Materno', 'Nombre', 'Notas', 'Ranking Notas\n(1-3)',
-               'Puntaje Académico\n(35)', 'RSH', 'I.P.C.', 'Puntaje I.P.C.\nFunc. Log. (30)', 'Puntaje Nivel\nEd. Padres',
+               'Puntaje Académico\n(35)', 'RSH', 'I.P.C.', 'Puntaje I.P.C.\nFunc. Log. (30)', 'Puntaje Nivel\nEd. Padres (5)',
                'Vul +\n(0/1)', 'Pje. Vul.\n(5)', f'Pje. Socio\necon. ({max_socio})', f'Comp. Y\nPart. ({max_comp})', 'Puntaje\nTotal',
                None, 'Ranking']
         ws.append(enc)
@@ -796,8 +796,8 @@ def escribir_ranking(g, ruta):
         ws.auto_filter.ref = f'A1:T{ultima}'
         ws.freeze_panes = 'D2'
 
-    hoja('35.50.25', 1, 1, 50, 25)
-    hoja('35.55.10', 55 / 50, 10 / 25, 55, 10)   # pestaña alternativa (para probar el selector)
+    hoja('35.40.25', 1, 1, 40, 25)
+    hoja('35.50.15', 50 / 40, 15 / 25, 50, 15)   # pestaña alternativa (para probar el selector)
     wb.save(ruta)
 
 
@@ -828,7 +828,7 @@ def escribir_guia(g, ruta, total_alumnos):
         ('6', 'Avance → Etapa 1', '"Sugerir desde confirmación"; marcar NO AVANZA a los que no respondieron; confirmar.', '', f'Avanzan {len(e1_av)} · No avanzan {len(inv) - len(e1_av)}.'),
         ('7', 'Encuentro (Etapa 2)', 'Crear las 3 fechas, inscribir según la hoja Etapa 2 y registrar los ausentes.', '', f'{sum(1 for a in e1_av if a["asistio"])} asisten, {sum(1 for a in e1_av if not a["asistio"])} ausentes.'),
         ('8', 'Avance → Etapa 2', '"Sugerir desde asistencia"; cambiar a AVANZA al ausente que justificó; confirmar.', '', f'Avanzan {len(e2_av)} · No avanzan {len(e1_av) - len(e2_av)}.'),
-        ('9', 'Preselección (Etapa 3)', 'Marcar requisitos y llenar la ficha RSH según la hoja Etapa 3. Subir el ranking, pestaña "35.50.25".', '3_Ranking_Preseleccion_N1_2026.xlsx', f'{len(g.enRanking)} filas en el ranking, 0 sin cruzar. 6 estudiantes de la etapa no están en el ranking (desisten).'),
+        ('9', 'Preselección (Etapa 3)', 'Marcar requisitos y llenar la ficha RSH según la hoja Etapa 3. Subir el ranking, pestaña "35.40.25".', '3_Ranking_Preseleccion_N1_2026.xlsx', f'{len(g.enRanking)} filas en el ranking, 0 sin cruzar. 6 estudiantes de la etapa no están en el ranking (desisten).'),
         ('10', 'Avance → Etapa 3', f'"Marcar según ranking" con N = {CUPO_ETAPA3}; marcar NO AVANZA a los 6 que no están en el ranking; confirmar.', '', f'Avanzan {len(e3_av)} · No avanzan {len(e2_av) - len(e3_av)}.'),
         ('11', 'Entrevistas (Etapa 4)', 'Agendar según la hoja Etapa 4 (bloques 10:00, 11:00, 12:00), poner estado y comentario.', '', f"{sum(1 for a in g.e4 if a['ent4']['estado'] == 'REALIZADA')} realizadas (1 de ellas reprogramada al 30/06), 1 cancelada."),
         ('12', 'Avance → Etapa 4', 'Marcar a mano quién avanza según la hoja Etapa 4; confirmar.', '', f'Avanzan {len(e4_av)} · No avanzan {len(g.e4) - len(e4_av)}.'),

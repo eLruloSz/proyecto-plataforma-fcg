@@ -166,6 +166,8 @@ export interface Encuentro { id: string; fecha: string; enlace: string | null; i
 export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
 export interface Plantilla {
   id: string; nombre: string; proposito: string; asunto: string; cuerpo: string;
+  /** Etapa (orden) a la que pertenece; null = cualquier etapa. */
+  etapa_orden: number | null;
   adjuntos: { id: string; nombre: string; tamano: number }[];
 }
 export interface EnvioResumen {
@@ -210,9 +212,10 @@ export interface Dashboard {
   rebotados: number;
 }
 export interface GrillaHitos {
-  catalogo: { codigo: string; nombre: string; orden: number; tipos_etapa?: string[] }[];
+  /** calculado: no se marca a mano; se completa con los datos (ej. respuestas de los invitados). */
+  catalogo: { codigo: string; nombre: string; orden: number; tipos_etapa?: string[]; calculado?: boolean }[];
   filas: { id: string; codigo: string; nombre: string; comuna: string | null; contraparte: string | null; contraparte_cargo: string | null; participacion: Participacion;
-    hitos: Record<string, { completado: boolean; automatico: boolean; fecha: string | null; observaciones: string | null }> }[];
+    hitos: Record<string, { completado: boolean; automatico: boolean; fecha: string | null; observaciones: string | null; detalle?: string }> }[];
 }
 
 /** Cuadro compacto del Inicio: hitos de la etapa (todos = la etapa no tiene hitos propios). */

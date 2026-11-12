@@ -31,6 +31,7 @@ export function Seguimiento() {
       <h1 className="titulo">Seguimiento por liceo</h1>
       <p className="mb-4 text-sm text-gray-500">
         Los hitos con borde se marcaron solos (al enviar un correo, recibir una respuesta o subir la nómina). Haz clic en cualquier celda para marcarla o desmarcarla a mano.
+        Las columnas con ⟳ se calculan con los datos del sistema (ej. cuántos invitados respondieron) y no se marcan a mano.
       </p>
       <TablaSeguimiento data={data} onMarcar={(liceoId, codigo, completado) => marcar.mutate({ liceoId, codigo, completado })} />
     </div>
@@ -56,7 +57,8 @@ export function TablaSeguimiento({ data, onMarcar }: {
             <th className={`min-w-[220px] ${FIJA} !z-[3] bg-gray-50`}>Liceo</th>
             <th>Participación</th>
             {data.catalogo.map((h) => (
-              <th key={h.codigo} className="min-w-[84px] text-center align-bottom leading-tight" title={h.nombre}>{h.nombre}</th>
+              <th key={h.codigo} className="min-w-[84px] text-center align-bottom leading-tight"
+                title={h.calculado ? `${h.nombre} (se calcula solo)` : h.nombre}>{h.nombre}{h.calculado && <span className="ml-0.5 text-gray-400">⟳</span>}</th>
             ))}
           </tr>
         </thead>
@@ -73,13 +75,20 @@ export function TablaSeguimiento({ data, onMarcar }: {
               {data.catalogo.map((h) => {
                 const v = f.hitos[h.codigo];
                 const hecho = !!v?.completado;
-                const titulo = `${h.nombre}: ${hecho ? `hecho ${fecha(v?.fecha)}${v?.automatico ? ' (automático)' : ''}` : 'pendiente'}${v?.observaciones ? ` — ${v.observaciones}` : ''}`;
+                const titulo = h.calculado
+                  ? `${h.nombre}: ${v?.detalle ?? 'sin estudiantes'}${hecho ? ' (completo)' : ''}`
+                  : `${h.nombre}: ${hecho ? `hecho ${fecha(v?.fecha)}${v?.automatico ? ' (automático)' : ''}` : 'pendiente'}${v?.observaciones ? ` — ${v.observaciones}` : ''}`;
                 const clase = `inline-flex h-5 w-5 items-center justify-center rounded-full ${
                   hecho ? (v?.automatico ? 'bg-green-600 ring-2 ring-green-200' : 'bg-green-600') : 'bg-gray-200'}`;
                 const marca = hecho && <span className="text-[10px] text-white">✓</span>;
                 return (
                   <td key={h.codigo} className="text-center">
-                    {onMarcar ? (
+                    {h.calculado ? (
+                      <span title={titulo} aria-label={titulo} className="inline-flex flex-col items-center gap-0.5">
+                        <span className={clase}>{marca}</span>
+                        {v?.detalle && <span className="text-[10px] tabular-nums text-gray-500">{v.detalle}</span>}
+                      </span>
+                    ) : onMarcar ? (
                       <button onClick={() => onMarcar(f.id, h.codigo, !hecho)} title={titulo}
                         aria-label={`${h.nombre} en ${f.nombre}: ${hecho ? 'hecho' : 'pendiente'}`}
                         className={`${clase} transition hover:scale-125`}>{marca}</button>

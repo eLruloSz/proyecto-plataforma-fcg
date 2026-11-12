@@ -5,3 +5,5 @@ uploads/
 *.log
 *.tsbuildinfo
 .DS_Store
+# Archivos temporales de Office (Excel/Word abiertos)
+~$*

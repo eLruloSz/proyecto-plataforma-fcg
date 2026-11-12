@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Global, Module, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Global, Module, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 import { DataSource } from 'typeorm';
@@ -38,8 +38,10 @@ export class HitosController {
       `SELECT id, proceso_id, nombre, clave, orden FROM etapas WHERE id = $1`, [etapaId]);
     if (!e) throw new NotFoundException('Etapa no encontrada.');
     const tipo = tipoEtapa(e);
+    // Los hitos se asocian a la clave de la etapa (así la entrevista y el comité tienen
+    // hitos distintos); la etapa 1, sin clave, usa su tipo (INVITACION).
     const propios: { codigo: string }[] = await this.ds.query(
-      `SELECT codigo FROM catalogo_hitos WHERE activo AND $1 = ANY(tipos_etapa)`, [tipo]);
+      `SELECT codigo FROM catalogo_hitos WHERE activo AND $1 = ANY(tipos_etapa)`, [e.clave ?? tipo]);
     const todos = propios.length === 0;
     const grilla = await this.hitos.grilla(e.proceso_id, {
       codigos: todos ? null : propios.map((h) => h.codigo),
@@ -64,8 +66,9 @@ export class HitosController {
     @Body() dto: MarcarHitoDto,
     @Usuario() u: UsuarioSesion,
   ) {
-    const [existe] = await this.ds.query(`SELECT 1 FROM catalogo_hitos WHERE codigo = $1 AND activo`, [codigo]);
+    const [existe] = await this.ds.query(`SELECT calculado FROM catalogo_hitos WHERE codigo = $1 AND activo`, [codigo]);
     if (!existe) throw new NotFoundException('Hito no encontrado.');
+    if (existe.calculado) throw new BadRequestException('Este hito se calcula solo con los datos del sistema; no se marca a mano.');
     await this.hitos.marcarManual(await this.proceso.id(), liceoId, codigo, dto.completado, dto.observaciones, u.id);
     return { ok: true };
   }

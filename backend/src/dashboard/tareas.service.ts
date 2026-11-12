@@ -166,16 +166,21 @@ export class TareasService {
       `WITH lic AS (
          SELECT l.id, COALESCE(pl.estado, 'PENDIENTE') AS estado,
                 EXISTS (SELECT 1 FROM hitos_liceo h WHERE h.proceso_id = $1 AND h.liceo_id = l.id AND h.codigo = 'MAIL_PRESENTACION' AND h.completado) AS presentado,
+                EXISTS (SELECT 1 FROM hitos_liceo h WHERE h.proceso_id = $1 AND h.liceo_id = l.id AND h.codigo = 'MAIL_SOLICITUD_NOTAS' AND h.completado) AS solicitud_notas,
                 EXISTS (SELECT 1 FROM hitos_liceo h WHERE h.proceso_id = $1 AND h.liceo_id = l.id AND h.codigo = 'INVITACION_ESTUDIANTES' AND h.completado) AS invitacion,
                 EXISTS (SELECT 1 FROM cargas c WHERE c.proceso_id = $1 AND c.liceo_id = l.id AND c.tipo = 'NOMINA_NOTAS') AS nomina,
                 (SELECT COUNT(*)::int FROM postulaciones p WHERE p.proceso_id = $1 AND p.liceo_id = l.id) AS invitados
            FROM liceos l LEFT JOIN participaciones_liceo pl ON pl.liceo_id = l.id AND pl.proceso_id = $1
           WHERE l.activo AND pl.incluido IS NOT FALSE)
        SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE presentado)::int AS presentados,
+              -- El correo de inicio del proceso puede presentar la beca y pedir las notas a la vez:
+              -- la solicitud de notas (o la nómina ya recibida) también cuenta como presentación.
+              COUNT(*) FILTER (WHERE presentado OR solicitud_notas OR nomina)::int AS presentados,
               COUNT(*) FILTER (WHERE estado = 'PARTICIPA')::int AS participan,
               COUNT(*) FILTER (WHERE estado = 'NO_PARTICIPA')::int AS no_participan,
               COUNT(*) FILTER (WHERE estado = 'PENDIENTE')::int AS sin_respuesta,
+              -- Si el liceo ya mandó su nómina, la solicitud se da por hecha.
+              COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND NOT solicitud_notas AND NOT nomina)::int AS sin_solicitud_notas,
               COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND NOT nomina)::int AS sin_nomina,
               COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND nomina AND invitados = 0)::int AS sin_invitados,
               COUNT(*) FILTER (WHERE invitados > 0)::int AS con_invitados,
@@ -195,6 +200,12 @@ export class TareasService {
       { clave: 'participacion', titulo: 'Saber qué liceos participan', hecha: d.total > 0 && d.sin_respuesta === 0,
         detalle: `${d.participan} participan · ${d.no_participan} no · ${d.sin_respuesta} sin respuesta`,
         accion: { texto: 'Ver respuestas', ruta: '/comunicacion' } },
+      { clave: 'solicitud_notas', titulo: 'Pedir las notas a los liceos que participan',
+        hecha: d.participan > 0 && d.sin_solicitud_notas === 0,
+        detalle: d.sin_solicitud_notas
+          ? `Falta enviar la solicitud a ${plural(d.sin_solicitud_notas, 'liceo', 'liceos')}`
+          : `Enviada a ${plural(d.participan, 'liceo', 'liceos')}`,
+        accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=SOLICITUD_NOTAS' } },
       { clave: 'nominas', titulo: 'Recibir y subir las nóminas de notas', hecha: d.participan > 0 && d.sin_nomina === 0,
         detalle: d.sin_nomina ? `Faltan ${plural(d.sin_nomina, 'nómina', 'nóminas')}` : 'Todas recibidas.',
         accion: { texto: 'Liceos y nóminas', ruta: '/liceos' } },

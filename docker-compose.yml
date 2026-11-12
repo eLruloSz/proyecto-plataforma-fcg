@@ -36,6 +36,8 @@ services:
       - ./db/11_usuarios_acceso.sql:/docker-entrypoint-initdb.d/11_usuarios_acceso.sql:ro
       - ./db/12_pautas_completadas.sql:/docker-entrypoint-initdb.d/12_pautas_completadas.sql:ro
       - ./db/13_plantilla_invitacion_lista.sql:/docker-entrypoint-initdb.d/13_plantilla_invitacion_lista.sql:ro
+      - ./db/14_plantillas_anexo_2026.sql:/docker-entrypoint-initdb.d/14_plantillas_anexo_2026.sql:ro
+      - ./db/15_hitos_flujo_2026.sql:/docker-entrypoint-initdb.d/15_hitos_flujo_2026.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s
@@ -61,9 +63,15 @@ services:
     environment:
       DATABASE_URL: postgresql://becas:becas_dev_password@db:5432/becas
       JWT_SECRET: cambia-esto-por-un-secreto-largo-de-al-menos-32-caracteres
-      SMTP_HOST: mailpit
-      SMTP_PORT: "1025"
-      MAIL_FROM: Fundación Carmen Goudie <becas@fundacion.local>
+      # Por defecto los correos van a Mailpit (no salen). Para probar con un correo
+      # real, copia .env.example a .env y completa SMTP_* y MAIL_REDIRIGIR_A.
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Fundación Carmen Goudie <becas@fundacion.local>}
+      MAIL_REDIRIGIR_A: ${MAIL_REDIRIGIR_A:-}
       MAIL_WEBHOOK_TOKEN: token-de-desarrollo
       UPLOAD_DIR: /app/uploads
       CORS_ORIGINS: http://localhost:8080

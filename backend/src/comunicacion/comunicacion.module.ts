@@ -6,7 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateNested,
+  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { timingSafeEqual } from 'crypto';
@@ -25,12 +25,14 @@ class PlantillaDto {
   @IsOptional() @IsIn(PROPOSITOS) proposito?: string;
   @IsString() @MinLength(1) @MaxLength(300) asunto: string;
   @IsString() @MinLength(1) @MaxLength(50000) cuerpo: string;
+  @IsOptional() @IsInt() @Min(1) @Max(20) etapaOrden?: number | null;
 }
 class EditarPlantillaDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200) nombre?: string;
   @IsOptional() @IsIn(PROPOSITOS) proposito?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(300) asunto?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(50000) cuerpo?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(20) etapaOrden?: number | null;
 }
 class FiltroEtapaDto {
   @IsUUID() etapaId: string;

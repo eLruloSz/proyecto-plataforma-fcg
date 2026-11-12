@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 import { AuditoriaService } from '../common/auditoria.service';
 import { ArchivosService } from '../common/archivos.service';
-import { HitosService, HITO_POR_PROPOSITO, HITO_RESPUESTA_POR_PROPOSITO } from '../hitos/hitos.service';
+import { HitosService, HITO_RESPUESTA_POR_PROPOSITO, hitosDeEnvio } from '../hitos/hitos.service';
 import { MailerService, limpiarMessageId } from './mailer.service';
 import { asuntoVisible, reemplazarVariables, variablesDesconocidas } from './variables';
 import { filas } from '../common/sql';
@@ -356,11 +356,15 @@ export class EnviosService {
 
     // El envío real ocurre en segundo plano: la pantalla muestra el avance
     // consultando el detalle del envío.
-    void this.procesarEnvio(envioId, proceso.id, proposito, grupo, usuario?.email);
+    // A los postulantes solo se les marca hito (en su liceo) con la invitación;
+    // el resto de los correos a estudiantes no corresponde a ningún hito del liceo.
+    const hitos = grupo !== 'POSTULANTES' || proposito === 'INVITACION_ESTUDIANTES'
+      ? await hitosDeEnvio(this.ds, proposito, s.plantillaId, s.envioOrigenId) : [];
+    void this.procesarEnvio(envioId, proceso.id, hitos, usuario?.email);
     return this.detalle(envioId);
   }
 
-  private async procesarEnvio(envioId: string, procesoId: string, proposito: string, grupo: string, responderA?: string) {
+  private async procesarEnvio(envioId: string, procesoId: string, hitos: string[], responderA?: string) {
     try {
       const adjuntos = [];
       for (const a of await this.ds.query(
@@ -370,10 +374,6 @@ export class EnviosService {
       const pendientes = await this.ds.query(
         `SELECT id, liceo_id, email, asunto_final, cuerpo_final FROM envio_destinatarios
           WHERE envio_id = $1 AND entrega = 'PENDIENTE'`, [envioId]);
-      // A los postulantes solo se les marca hito (en su liceo) con la invitación;
-      // el resto de los correos a estudiantes no corresponde a ningún hito del liceo.
-      const hito = grupo !== 'POSTULANTES' || proposito === 'INVITACION_ESTUDIANTES'
-        ? HITO_POR_PROPOSITO[proposito] : undefined;
 
       for (const d of pendientes) {
         try {
@@ -383,7 +383,7 @@ export class EnviosService {
           await this.ds.query(
             `UPDATE envio_destinatarios SET entrega = 'ENVIADO', id_externo = $2, error = NULL WHERE id = $1`,
             [d.id, idExterno]);
-          if (hito && d.liceo_id) await this.hitos.marcarAutomatico(procesoId, d.liceo_id, hito);
+          if (d.liceo_id) for (const hito of hitos) await this.hitos.marcarAutomatico(procesoId, d.liceo_id, hito);
         } catch (e) {
           await this.ds.query(
             `UPDATE envio_destinatarios SET entrega = 'FALLIDO', error = $2 WHERE id = $1`,
@@ -461,7 +461,10 @@ export class EnviosService {
   ) {
     const procesoId = await this.proceso.id();
     const [d] = await this.ds.query(
-      `SELECT d.id, d.liceo_id, e.proposito, e.grupo FROM envio_destinatarios d JOIN envios e ON e.id = d.envio_id
+      `SELECT d.id, d.liceo_id, e.proposito, e.grupo, pl.hito_respuesta
+         FROM envio_destinatarios d JOIN envios e ON e.id = d.envio_id
+         LEFT JOIN plantillas_correo pl
+           ON pl.id = COALESCE(e.plantilla_id, (SELECT o.plantilla_id FROM envios o WHERE o.id = e.envio_origen_id))
         WHERE d.id = $1 AND d.envio_id = $2 AND e.proceso_id = $3`, [destinatarioId, envioId, procesoId]);
     if (!d) throw new NotFoundException('Destinatario no encontrado.');
 
@@ -476,7 +479,7 @@ export class EnviosService {
         [d.id, datos.respondido ? 'RESPONDIDO' : 'PENDIENTE', usuarioId, datos.nota ?? null]);
 
       if (d.liceo_id && d.grupo !== 'POSTULANTES') {
-        const hito = HITO_RESPUESTA_POR_PROPOSITO[d.proposito];
+        const hito = d.hito_respuesta ?? HITO_RESPUESTA_POR_PROPOSITO[d.proposito];
         if (hito && datos.respondido) await this.hitos.marcarAutomatico(procesoId, d.liceo_id, hito, em);
         if (d.proposito === 'PRESENTACION' && datos.participa !== undefined) {
           await em.query(

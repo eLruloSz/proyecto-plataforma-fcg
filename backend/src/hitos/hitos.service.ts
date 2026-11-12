@@ -1,22 +1,40 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-/** Hito que se marca solo cuando se envía un correo con ese propósito. */
-export const HITO_POR_PROPOSITO: Record<string, string | undefined> = {
-  PRESENTACION: 'MAIL_PRESENTACION',
-  SOLICITUD_NOTAS: 'MAIL_SOLICITUD_NOTAS',
-  SOLICITUD_CONTACTOS: 'MAIL_APROBACION',
-  INVITACION_ESTUDIANTES: 'INVITACION_ESTUDIANTES',
-  AGRADECIMIENTO: 'MAIL_AGRADECIMIENTO',
-  INFORME_LICEO: 'AVISO_RESULTADOS',
+/**
+ * Hitos que se marcan solos cuando se envía un correo con ese propósito.
+ * Además, cada plantilla puede marcar su propio hito (plantillas_correo.hito_envio):
+ * así los correos de resultado de cada etapa, que comparten propósito, marcan cada uno el suyo.
+ */
+export const HITO_POR_PROPOSITO: Record<string, string[] | undefined> = {
+  PRESENTACION: ['MAIL_PRESENTACION'],
+  // El correo de inicio presenta la beca y pide las notas a la vez.
+  SOLICITUD_NOTAS: ['MAIL_SOLICITUD_NOTAS', 'MAIL_PRESENTACION'],
+  SOLICITUD_CONTACTOS: ['MAIL_APROBACION'],
+  INVITACION_ESTUDIANTES: ['INVITACION_ESTUDIANTES'],
+  AGRADECIMIENTO: ['MAIL_AGRADECIMIENTO'],
 };
 
-/** Hito que se marca solo cuando el liceo responde un correo con ese propósito. */
+/** Hito que se marca solo cuando el liceo responde un correo con ese propósito (o plantillas_correo.hito_respuesta). */
 export const HITO_RESPUESTA_POR_PROPOSITO: Record<string, string | undefined> = {
   PRESENTACION: 'ACUSO_RECIBO',
-  SOLICITUD_NOTAS: 'RECEPCION_NOMINA',
+  // Responder el correo de inicio es el acuso de recibo; la nómina se marca al subirla.
+  SOLICITUD_NOTAS: 'ACUSO_RECIBO',
   SOLICITUD_CONTACTOS: 'APROBACION_CONTACTOS',
 };
+
+/** Hitos que marca enviar un correo: los del propósito más el de la plantilla (o la del envío original). */
+export async function hitosDeEnvio(
+  ds: DataSource, proposito: string, plantillaId?: string | null, envioOrigenId?: string | null,
+): Promise<string[]> {
+  const hitos = new Set(HITO_POR_PROPOSITO[proposito] ?? []);
+  const [p] = await ds.query(
+    `SELECT pl.hito_envio FROM plantillas_correo pl
+      WHERE pl.id = COALESCE($1::uuid, (SELECT o.plantilla_id FROM envios o WHERE o.id = $2::uuid))`,
+    [plantillaId ?? null, envioOrigenId ?? null]);
+  if (p?.hito_envio) hitos.add(p.hito_envio);
+  return [...hitos];
+}
 
 @Injectable()
 export class HitosService {
@@ -61,11 +79,13 @@ export class HitosService {
    *  - cerrado: concurso anterior → solo los liceos que participaron ese año.
    */
   async grilla(procesoId: string, opciones: { codigos?: string[] | null; etapaId?: string; cerrado?: boolean } = {}) {
-    const catalogo = await this.ds.query(
-      `SELECT codigo, nombre, orden, tipos_etapa FROM catalogo_hitos
-        WHERE activo AND ($1::text[] IS NULL OR codigo = ANY($1))
-        ORDER BY orden`,
-      [opciones.codigos ?? null],
+    // En un concurso cerrado también se muestran los hitos ya desactivados que se usaron ese año.
+    const catalogo: { codigo: string; nombre: string; orden: number; tipos_etapa: string[]; calculado: boolean }[] = await this.ds.query(
+      `SELECT c.codigo, c.nombre, c.orden, c.tipos_etapa, c.calculado FROM catalogo_hitos c
+        WHERE (c.activo OR ($3 AND EXISTS (SELECT 1 FROM hitos_liceo h WHERE h.codigo = c.codigo AND h.proceso_id = $2)))
+          AND ($1::text[] IS NULL OR c.codigo = ANY($1))
+        ORDER BY c.orden`,
+      [opciones.codigos ?? null, procesoId, !!opciones.cerrado],
     );
     const filas = await this.ds.query(
       `SELECT l.id, l.codigo, l.nombre, l.comuna,
@@ -90,6 +110,44 @@ export class HitosService {
         ORDER BY l.codigo`,
       [procesoId, opciones.etapaId ?? null, !!opciones.cerrado],
     );
+    await this.agregarCalculados(procesoId, catalogo.filter((h) => h.calculado).map((h) => h.codigo), filas);
     return { catalogo, filas };
+  }
+
+  /**
+   * Hitos calculados (no se marcan): se completan cuando todos los estudiantes
+   * del liceo cumplen. `detalle` muestra el avance, ej. "4/6".
+   *  - RESPUESTAS_INVITADOS: invitados que respondieron si aceptan postular.
+   *  - ENTREVISTA_FINAL: estudiantes de la etapa del comité con entrevista agendada.
+   */
+  private async agregarCalculados(procesoId: string, codigos: string[], filas: { id: string; hitos: Record<string, unknown> }[]) {
+    if (!codigos.length) return;
+    const consultas: Record<string, string> = {
+      RESPUESTAS_INVITADOS:
+        `SELECT p.liceo_id, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE p.confirmacion <> 'PENDIENTE')::int AS hechos
+           FROM postulaciones p WHERE p.proceso_id = $1 GROUP BY p.liceo_id`,
+      ENTREVISTA_FINAL:
+        `SELECT p.liceo_id, COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE en.fecha_hora IS NOT NULL AND en.estado <> 'CANCELADA')::int AS hechos
+           FROM etapas e
+           JOIN postulaciones p ON p.proceso_id = e.proceso_id AND p.estado <> 'DESISTIO'
+            AND (p.etapa_id = e.id OR EXISTS (SELECT 1 FROM resultados_etapa r WHERE r.postulacion_id = p.id AND r.etapa_id = e.id))
+           LEFT JOIN entrevistas en ON en.postulacion_id = p.id AND en.etapa_id = e.id
+          WHERE e.proceso_id = $1 AND e.clave = 'ENTREVISTA_COMITE'
+          GROUP BY p.liceo_id`,
+    };
+    for (const codigo of codigos) {
+      if (!consultas[codigo]) continue;
+      const datos: { liceo_id: string; total: number; hechos: number }[] = await this.ds.query(consultas[codigo], [procesoId]);
+      const porLiceo = new Map(datos.map((d) => [d.liceo_id, d]));
+      for (const f of filas) {
+        const d = porLiceo.get(f.id);
+        if (!d) continue; // el liceo no tiene estudiantes en esto: queda pendiente, sin detalle
+        f.hitos[codigo] = {
+          completado: d.total > 0 && d.hechos === d.total, automatico: true, fecha: null, observaciones: null,
+          detalle: `${d.hechos}/${d.total}`,
+        };
+      }
+    }
   }
 }

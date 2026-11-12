@@ -102,7 +102,7 @@ function SubirNomina({ liceo, hayNomina }: { liceo: Liceo; hayNomina: boolean })
       </button>
 
       {previa && (
-        <Modal titulo={`Revisar nómina — ${archivo?.name}`} onCerrar={cerrar} ancho="max-w-3xl"
+        <Modal titulo={`Revisar nómina — ${archivo?.name}`} onCerrar={cerrar} ancho="max-w-3xl" ajustado
           pie={<>
             <button className="btn-secundario" onClick={cerrar}>Cancelar</button>
             <button className="btn-primario" disabled={!previa.totalAlumnos || confirmar.isPending} onClick={() => confirmar.mutate()}>
@@ -111,13 +111,13 @@ function SubirNomina({ liceo, hayNomina }: { liceo: Liceo; hayNomina: boolean })
           </>}>
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="tarjeta p-3"><div className="text-xl font-bold">{previa.totalAlumnos}</div><div className="text-xs text-gray-500">alumnos a cargar</div></div>
-              <div className="tarjeta p-3"><div className="text-xl font-bold">{previa.cursos.length}</div><div className="text-xs text-gray-500">cursos</div></div>
-              <div className="tarjeta p-3"><div className={`text-xl font-bold ${previa.errores.length ? 'text-red-700' : ''}`}>{previa.errores.length}</div><div className="text-xs text-gray-500">filas con error</div></div>
+              <div className="tarjeta px-3 py-2"><span className="text-lg font-bold">{previa.totalAlumnos}</span> <span className="text-xs text-gray-500">alumnos a cargar</span></div>
+              <div className="tarjeta px-3 py-2"><span className="text-lg font-bold">{previa.cursos.length}</span> <span className="text-xs text-gray-500">cursos</span></div>
+              <div className="tarjeta px-3 py-2"><span className={`text-lg font-bold ${previa.errores.length ? 'text-red-700' : ''}`}>{previa.errores.length}</span> <span className="text-xs text-gray-500">filas con error</span></div>
             </div>
 
             {previa.cursos.length > 0 && (
-              <table className="tabla tarjeta">
+              <table className="tabla tarjeta [&_td]:py-1.5 [&_th]:py-1.5">
                 <thead><tr><th>Curso</th><th>Como venía</th><th>Especialidad</th><th className="text-right">Alumnos</th></tr></thead>
                 <tbody>{previa.cursos.map((c) => (
                   <tr key={c.curso}><td className="font-medium">{c.curso}</td><td className="text-gray-500">{c.cursoOriginal}</td><td className="text-gray-500">{c.especialidad ?? '—'}</td><td className="text-right">{c.alumnos}</td></tr>
@@ -157,8 +157,8 @@ function ListaPrevia({ alumnos }: { alumnos: Previsualizacion['alumnos'] }) {
   return (
     <div>
       <div className="mb-1.5 text-xs font-semibold text-gray-600">Alumnos del liceo, del mejor al peor promedio</div>
-      <div className="tarjeta max-h-72 overflow-auto">
-        <table className="tabla">
+      <div className="tarjeta max-h-[30vh] overflow-auto">
+        <table className="tabla [&_td]:py-1.5">
           <thead><tr><th className="w-14">Lugar</th><th>Alumno</th><th>Curso</th><th className="w-16">En curso</th><th className="text-right">1°</th><th className="text-right">2°</th><th className="text-right">Prom.</th></tr></thead>
           <tbody>
             {ordenados.map((a, i) => (

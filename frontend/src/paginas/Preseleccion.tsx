@@ -17,9 +17,9 @@ export function EncabezadoLugar() {
 export function EncabezadosPuntajes() {
   return (
     <>
-      <th className="text-right" title="Puntaje total (máx. 110 = 35 + 50 + 25)">Total <span className="font-normal text-gray-400">/110</span></th>
+      <th className="text-right" title="Puntaje total (máx. 100 = 35 + 40 + 25)">Total <span className="font-normal text-gray-400">/100</span></th>
       <th className="text-right" title="Puntaje académico (máx. 35): según el lugar del estudiante en su liceo (1° → 35, 2° → 30, 3° → 25)">Académico <span className="font-normal text-gray-400">/35</span></th>
-      <th className="text-right" title="Puntaje socioeconómico (máx. 50) = I.P.C. (máx. 30) + nivel educacional de los padres (máx. 15) + vulnerabilidad (máx. 5)">Socioeconómico <span className="font-normal text-gray-400">/50</span></th>
+      <th className="text-right" title="Puntaje socioeconómico (máx. 40) = I.P.C. (máx. 30) + nivel educacional de los padres (máx. 5) + vulnerabilidad (máx. 5)">Socioeconómico <span className="font-normal text-gray-400">/40</span></th>
       <th className="text-right" title="Compromiso y participación (máx. 25)">Compromiso <span className="font-normal text-gray-400">/25</span></th>
       <th title="RSH según el Excel del ranking">RSH</th>
     </>

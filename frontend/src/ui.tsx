@@ -27,8 +27,13 @@ export function ProveedorAvisos({ children }: { children: ReactNode }) {
 }
 
 // --- Modal -------------------------------------------------------------------
-export function Modal({ titulo, onCerrar, children, ancho = 'max-w-2xl', pie }: {
-  titulo: string; onCerrar: () => void; children: ReactNode; ancho?: string; pie?: ReactNode;
+/**
+ * Ventana modal. Con `ajustado`, la ventana nunca es más alta que la pantalla:
+ * el título y el pie (botones) quedan siempre visibles y solo se desplaza el
+ * contenido del medio.
+ */
+export function Modal({ titulo, onCerrar, children, ancho = 'max-w-2xl', pie, ajustado = false }: {
+  titulo: string; onCerrar: () => void; children: ReactNode; ancho?: string; pie?: ReactNode; ajustado?: boolean;
 }) {
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onCerrar();
@@ -38,12 +43,12 @@ export function Modal({ titulo, onCerrar, children, ancho = 'max-w-2xl', pie }: 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-10" onMouseDown={onCerrar}>
       <div role="dialog" aria-modal="true" aria-label={titulo}
-        className={`w-full ${ancho} rounded-lg bg-white text-left shadow-xl`} onMouseDown={(e) => e.stopPropagation()}>
+        className={`w-full ${ancho} rounded-lg bg-white text-left shadow-xl ${ajustado ? 'flex max-h-full flex-col' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
           <h2 className="subtitulo">{titulo}</h2>
           <button onClick={onCerrar} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Cerrar">✕</button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className={`px-5 py-4 ${ajustado ? 'min-h-0 flex-1 overflow-y-auto' : ''}`}>{children}</div>
         {pie && <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">{pie}</div>}
       </div>
     </div>

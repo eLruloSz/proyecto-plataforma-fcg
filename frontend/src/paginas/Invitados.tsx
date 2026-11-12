@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Confirmacion, Encuentro, Invitado } from '../api';
 import { useProceso } from '../Layout';
 import { ImportarContactos } from './ImportarContactos';
-import { Cargando, ErrorCarga, Etiqueta, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
+import { Cargando, DesplazamientoDoble, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 
 function useActualizar() {
   const qc = useQueryClient();
@@ -169,18 +169,18 @@ export function Invitados() {
         </div>
       )}
 
-      <div className="tarjeta overflow-x-auto">
+      <DesplazamientoDoble className="tarjeta">
         <table className="tabla">
           <thead>
             <tr>
               <th>Id</th><th>Estudiante</th><th>Liceo</th><th>Curso</th><th className="text-right">Prom.</th>
               <th className="whitespace-nowrap" title="Lugar entre todos los alumnos de la nómina de su liceo, y lugar dentro de su curso">Lugar</th>
               <th className="min-w-[180px]">Email</th><th className="min-w-[120px]">Teléfono</th>
-              <th>Aceptó postular</th>{conEncuentro && <><th>Encuentro online</th><th>Asistió</th></>}<th>Etapa</th><th />
+              <th>Aceptó postular</th>{conEncuentro && <><th>Encuentro online</th><th>Asistió</th></>}<th />
             </tr>
           </thead>
           <tbody>
-            {lista.length === 0 && <tr><td colSpan={conEncuentro ? 13 : 11}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
+            {lista.length === 0 && <tr><td colSpan={conEncuentro ? 12 : 10}><Vacio>No hay invitados con este filtro.</Vacio></td></tr>}
             {lista.map((i) => (
               <tr key={i.id} className={i.confirmacion === 'RECHAZADO' ? 'text-gray-400' : ''}>
                 <td className="font-mono text-xs">{i.codigo}</td>
@@ -216,7 +216,6 @@ export function Invitados() {
                   <input type="checkbox" checked={!!i.asistio_encuentro} onChange={(e) => set(i.id, { asistioEncuentro: e.target.checked })} aria-label="Asistió al encuentro" />
                 </td>
                 </>)}
-                <td><EstadoEnProceso i={i} /></td>
                 <td className="whitespace-nowrap text-right">
                   <button className="text-xs text-gray-500 hover:text-gray-900" onClick={() => setComentando(i)}>
                     {i.comentarios ? <Etiqueta tono="azul">{i.comentarios} coment.</Etiqueta> : 'Comentar'}
@@ -229,7 +228,7 @@ export function Invitados() {
             ))}
           </tbody>
         </table>
-      </div>
+      </DesplazamientoDoble>
 
       {importando && <ImportarContactos invitados={data!} onCerrar={() => setImportando(false)} />}
       {comentando && <Comentarios inv={comentando} onCerrar={() => setComentando(null)} />}

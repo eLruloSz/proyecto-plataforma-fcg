@@ -60,9 +60,25 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `11_usuarios_acceso.sql` | Roles (equipo / solo lectura), invitaciones y "¿Olvidaste tu contraseña?" |
 | `12_pautas_completadas.sql` | Word de la pauta de entrevista ya rellenado, guardado por estudiante y etapa |
 | `13_plantilla_invitacion_lista.sql` | Plantilla «Invitación a postular (listado para la contraparte)»: solo los nombres de los invitados + enlace al formulario |
+| `14_plantillas_anexo_2026.sql` | Etapa de cada plantilla y los 18 correos reales del proceso 2026 (contrapartes, directivos y postulantes) |
+| `15_hitos_flujo_2026.sql` | Seguimiento por liceo según el flujo actual: hitos por etapa, casi todos automáticos, 2 calculados (respuestas de invitados, entrevista final) |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
+
+## Probar con un correo real
+
+Por defecto los correos llegan a Mailpit y no salen a internet. Para ver cómo llegan de
+verdad (en Gmail, Outlook, el celular):
+
+1. Copia `.env.example` como `.env` (en la raíz; no se sube al repo) y completa `SMTP_*`
+   con tu cuenta. Con Gmail se usa una *contraseña de aplicación*.
+2. Deja **`MAIL_REDIRIGIR_A`** con tu correo: todos los envíos llegan a esa casilla, con el
+   destinatario real en el asunto (`[Prueba — para: contraparte01@…]`). Así no se le escribe
+   a ningún liceo ni estudiante aunque la base tenga contactos reales.
+3. `docker compose --profile app up -d` (recrea el backend con las nuevas variables).
+
+En producción `MAIL_REDIRIGIR_A` va vacío y `SMTP_*` apunta a la casilla de la fundación.
 
 ## Usuarios y acceso
 
