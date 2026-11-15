@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, FichaPostulacion } from '../api';
 import { useEtapa } from '../etapa';
@@ -48,7 +48,8 @@ const APRECIACIONES: Record<Apreciacion, { texto: string; chip: string; activo: 
 };
 const ORDEN_APRECIACION = Object.keys(APRECIACIONES) as Apreciacion[];
 
-type Filtro = 'todos' | 'sin-decidir' | 'seleccionados' | 'no-seleccionados' | 'sin-apreciacion';
+type Filtro = 'todos' | 'sin-decidir' | 'seleccionados' | 'no-seleccionados' | 'sin-apreciacion' | 'aceptaria' | 'con-dudas' | 'no-aceptaria';
+type Orden = 'ranking' | 'id' | 'apreciacion';
 const CLAVES = ['seleccion', 'avance', 'proceso', 'dashboard', 'tareas', 'entrevistas'];
 
 const sinTildes = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -77,6 +78,8 @@ export function Seleccion() {
   });
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [liceoFiltro, setLiceoFiltro] = useState('');
+  const [orden, setOrden] = useState<Orden>('ranking');
   const [abierto, setAbierto] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
 
@@ -98,20 +101,36 @@ export function Seleccion() {
     onError: errorAviso,
   });
 
+  const liceos = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of v?.candidatos ?? []) m.set(f.liceo_codigo, `${f.liceo_codigo}. ${f.liceo}`);
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'es', { numeric: true }));
+  }, [v]);
+
   const lista = useMemo(() => {
     if (!v) return [];
     const q = sinTildes(busca.trim());
-    return v.candidatos.filter((f) => {
+    const filtrados = v.candidatos.filter((f) => {
       if (q && !sinTildes(`${nombreCompleto(f)} ${f.codigo} ${f.liceo}`).includes(q)) return false;
+      if (liceoFiltro && f.liceo_codigo !== liceoFiltro) return false;
       switch (filtro) {
         case 'sin-decidir': return !f.confirmado && !f.resultado;
         case 'seleccionados': return f.resultado === 'PASA';
         case 'no-seleccionados': return f.resultado === 'NO_PASA';
         case 'sin-apreciacion': return !f.sugerencia;
+        case 'aceptaria': return apreciacionActual(f) === 'ACEPTARIA';
+        case 'con-dudas': return apreciacionActual(f) === 'ACEPTARIA_CON_DUDAS';
+        case 'no-aceptaria': return apreciacionActual(f) === 'NO_ACEPTARIA';
         default: return true;
       }
     });
-  }, [v, busca, filtro]);
+    const rango = (f: Finalista) => { const a = apreciacionActual(f); return a ? ORDEN_APRECIACION.indexOf(a) : 99; };
+    return [...filtrados].sort((a, b) => {
+      if (orden === 'id') return a.codigo.localeCompare(b.codigo, 'es', { numeric: true });
+      if (orden === 'apreciacion') return rango(a) - rango(b) || (a.ranking?.posicion ?? 9999) - (b.ranking?.posicion ?? 9999);
+      return (a.ranking?.posicion ?? 9999) - (b.ranking?.posicion ?? 9999) || a.codigo.localeCompare(b.codigo, 'es', { numeric: true });
+    });
+  }, [v, busca, filtro, liceoFiltro, orden]);
 
   if (isLoading || !etapaId) return <Cargando />;
   if (error) return <ErrorCarga error={error} />;
@@ -126,15 +145,9 @@ export function Seleccion() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="titulo">Selección final</h1>
-          <p className="text-sm text-gray-500">{v.etapa.nombre}: aquí se ve a cada finalista completo y se decide quién recibe la beca.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link className="btn-secundario" to={`/entrevistas/${v.etapa.id}`}>Calendario de entrevistas</Link>
-          <Link className="btn-secundario" to={`/avance/${v.etapa.id}`}>Resultados</Link>
-        </div>
+      <div>
+        <h1 className="titulo">Selección final</h1>
+        <p className="text-sm text-gray-500">{v.etapa.nombre}: aquí se ve a cada finalista completo y se decide quién recibe la beca.</p>
       </div>
 
       {/* Cupo y avance de la decisión */}
@@ -168,24 +181,56 @@ export function Seleccion() {
         </div>
       )}
 
-      {/* Búsqueda y filtros */}
-      <div className="flex flex-wrap items-center gap-2">
-        <input className="input max-w-xs py-1.5" placeholder="Buscar por nombre, Id o liceo" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        {([['todos', 'Todos'], ['sin-decidir', 'Sin decidir'], ['seleccionados', 'Seleccionados'], ['no-seleccionados', 'No seleccionados'], ['sin-apreciacion', 'Sin apreciación']] as const).map(([k, t]) => (
-          <button key={k} onClick={() => setFiltro(k)} aria-pressed={filtro === k}
-            className={`rounded-full border px-3 py-1 text-xs ${filtro === k ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}>{t}</button>
-        ))}
-        <span className="text-xs text-gray-400">{lista.length} de {v.candidatos.length}</span>
+      {/* Búsqueda, filtros y orden */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm text-gray-500">{lista.length === v.candidatos.length ? `${lista.length} finalistas` : `${lista.length} de ${v.candidatos.length} finalistas`}</span>
+        <div className="flex flex-wrap gap-2">
+          <input className="input w-auto min-w-[200px] py-1.5" placeholder="Buscar por nombre, Id o liceo" aria-label="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <select className="input w-auto" value={orden} onChange={(e) => setOrden(e.target.value as Orden)} aria-label="Ordenar">
+            <option value="ranking">Ordenar por ranking</option>
+            <option value="id">Ordenar por Id</option>
+            <option value="apreciacion">Ordenar por apreciación</option>
+          </select>
+          <select className="input w-auto max-w-[240px]" value={liceoFiltro} onChange={(e) => setLiceoFiltro(e.target.value)} aria-label="Filtrar por liceo">
+            <option value="">Todos los liceos</option>
+            {liceos.map(([codigo, nombre]) => <option key={codigo} value={codigo}>{nombre}</option>)}
+          </select>
+          <select className="input w-auto" value={filtro} onChange={(e) => setFiltro(e.target.value as Filtro)} aria-label="Filtrar">
+            <option value="todos">Todos</option>
+            <option value="sin-decidir">Sin decidir</option>
+            <option value="seleccionados">Seleccionados</option>
+            <option value="no-seleccionados">No seleccionados</option>
+            <option value="aceptaria">Apreciación: aceptaría</option>
+            <option value="con-dudas">Apreciación: con dudas</option>
+            <option value="no-aceptaria">Apreciación: no aceptaría</option>
+            <option value="sin-apreciacion">Sin apreciación</option>
+          </select>
+        </div>
       </div>
 
       {lista.length === 0 ? <Vacio>{v.candidatos.length ? 'Ningún finalista coincide con el filtro.' : 'Todavía no hay estudiantes en esta etapa.'}</Vacio> : (
-        <div className="space-y-2">
-          {lista.map((f) => <TarjetaFinalista key={f.id} f={f} soloLectura={soloLectura} ocupado={marcar.isPending}
-            onAbrir={() => setAbierto(f.id)} onMarcar={(resultado) => marcar.mutate({ f, resultado })} />)}
+        <div className="tarjeta overflow-x-auto">
+          <table className="tabla">
+            <thead>
+              <tr>
+                <th className="w-16 text-center">Ranking</th>
+                <th>Finalista</th>
+                <th>Notas y RSH</th>
+                <th>Entrevistas</th>
+                <th>Apreciación</th>
+                <th className="text-right">Decisión</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((f) => <FilaFinalista key={f.id} f={f} soloLectura={soloLectura} ocupado={marcar.isPending}
+                onAbrir={() => setAbierto(f.id)} onMarcar={(resultado) => marcar.mutate({ f, resultado })} />)}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {fichaAbierta && <FichaFinalista f={fichaAbierta} soloLectura={soloLectura} onCerrar={() => setAbierto(null)} onCambio={refrescar} />}
+      {fichaAbierta && <FichaFinalista f={fichaAbierta} soloLectura={soloLectura} ocupado={marcar.isPending} onCerrar={() => setAbierto(null)} onCambio={refrescar}
+    onMarcar={(resultado) => marcar.mutate({ f: fichaAbierta, resultado })} />}
 
       {confirmando && (
         <Modal titulo="Confirmar selección" onCerrar={() => setConfirmando(false)} ancho="max-w-md"
@@ -204,56 +249,73 @@ export function Seleccion() {
   );
 }
 
-function TarjetaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
+/** Botones de decisión: se usan en la tabla y dentro de la ficha. */
+function Decision({ f, soloLectura, ocupado, onMarcar }: { f: Finalista; soloLectura: boolean; ocupado: boolean; onMarcar: (r: Resultado) => void }) {
+  if (f.confirmado) return f.resultado === 'PASA' ? <Etiqueta tono="verde">Becario/a</Etiqueta> : <Etiqueta tono="rojo">No seleccionado/a</Etiqueta>;
+  if (soloLectura) {
+    return f.resultado === 'PASA' ? <Etiqueta tono="verde">Seleccionado/a</Etiqueta>
+      : f.resultado === 'NO_PASA' ? <Etiqueta tono="rojo">No seleccionado/a</Etiqueta> : <span className="text-xs text-gray-400">sin decidir</span>;
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <button disabled={ocupado} aria-pressed={f.resultado === 'PASA'} onClick={() => onMarcar(f.resultado === 'PASA' ? null : 'PASA')}
+        className={`whitespace-nowrap rounded-md border px-2.5 py-1 text-xs ${f.resultado === 'PASA' ? 'border-green-600 bg-green-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-green-50'}`}>Seleccionar</button>
+      <button disabled={ocupado} aria-pressed={f.resultado === 'NO_PASA'} onClick={() => onMarcar(f.resultado === 'NO_PASA' ? null : 'NO_PASA')}
+        className={`whitespace-nowrap rounded-md border px-2.5 py-1 text-xs ${f.resultado === 'NO_PASA' ? 'border-red-600 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-50'}`}>No seleccionar</button>
+    </div>
+  );
+}
+
+const nombreCorto = (s: string) => s.replace(/^Preselección\s*/i, 'Presel. ').replace(/^Selección de becarios$/i, 'Selección final');
+
+function FilaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
   f: Finalista; soloLectura: boolean; ocupado: boolean; onAbrir: () => void; onMarcar: (r: Resultado) => void;
 }) {
-  const ap = apreciacionActual(f);
   const avisar = useAviso();
-  const conPauta = f.entrevistas.filter((e) => e.pauta).length;
-  /** Una sola pauta: se descarga directo. Si hay más de una (etapas 4 y 5), se abre la ficha para elegir. */
-  const abrirPauta = async () => {
-    const e = f.entrevistas.find((x) => x.pauta);
-    if (conPauta !== 1 || !e) return onAbrir();
+  const ap = apreciacionActual(f);
+  const bajar = async (e: EntrevistaFinalista) => {
     try { await api.descargar(`/entrevistas/${e.etapa_id}/estudiantes/${f.id}/pauta-completada`, e.pauta?.nombre ?? `Pauta ${f.codigo}.docx`); }
     catch (err) { avisar((err as Error).message, 'error'); }
   };
+  const rsh = f.ficha ? (f.ficha.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : f.ficha.tramo_rsh !== null ? <Etiqueta>RSH {f.ficha.tramo_rsh}%</Etiqueta> : null) : null;
   return (
-    <div className={`tarjeta flex flex-wrap items-center gap-x-4 gap-y-2 p-3 ${f.resultado === 'PASA' ? 'border-green-300' : f.resultado === 'NO_PASA' ? 'border-red-200 bg-red-50/30' : ''}`}>
-      <div className="w-10 text-center" title="Posición en el ranking">
-        <div className="text-lg font-bold text-gray-800">{f.ranking?.posicion ?? '—'}</div>
-        <div className="text-[10px] uppercase text-gray-400">ranking</div>
-      </div>
-      <button className="min-w-0 flex-1 text-left" onClick={onAbrir}>
-        <div className="truncate font-medium hover:underline">{nombreCompleto(f)}</div>
-        <div className="truncate text-xs text-gray-500"><span className="font-mono">{f.codigo}</span> · {f.liceo}{f.promedio !== null ? ` · promedio ${nota(f.promedio)}` : ''}</div>
-      </button>
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-        {f.ficha && (f.ficha.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : f.ficha.tramo_rsh !== null && <Etiqueta>RSH {f.ficha.tramo_rsh}%</Etiqueta>)}
-        {ap ? <span className={`rounded border px-1.5 py-0.5 ${APRECIACIONES[ap].chip}`}>{APRECIACIONES[ap].texto}</span>
-          : <span className="text-gray-400">sin apreciación</span>}
-        {conPauta > 0 && (
-          <button className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-800 hover:bg-blue-100" onClick={abrirPauta}
-            title={conPauta === 1 ? 'Descargar el Word de la pauta completada' : 'Ver las pautas completadas en la ficha'}>
-            📄 Pauta{conPauta > 1 ? ` ×${conPauta}` : ''}
-          </button>
-        )}
-      </div>
-      <div className="flex items-center gap-1.5">
-        {f.confirmado ? (
-          f.resultado === 'PASA' ? <Etiqueta tono="verde">Becario/a</Etiqueta> : <Etiqueta tono="rojo">No seleccionado/a</Etiqueta>
-        ) : soloLectura ? (
-          f.resultado === 'PASA' ? <Etiqueta tono="verde">Seleccionado/a</Etiqueta> : f.resultado === 'NO_PASA' ? <Etiqueta tono="rojo">No seleccionado/a</Etiqueta> : <span className="text-xs text-gray-400">sin decidir</span>
-        ) : (
-          <>
-            <button disabled={ocupado} aria-pressed={f.resultado === 'PASA'} onClick={() => onMarcar(f.resultado === 'PASA' ? null : 'PASA')}
-              className={`rounded-md border px-2.5 py-1 text-xs ${f.resultado === 'PASA' ? 'border-green-600 bg-green-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-green-50'}`}>Seleccionar</button>
-            <button disabled={ocupado} aria-pressed={f.resultado === 'NO_PASA'} onClick={() => onMarcar(f.resultado === 'NO_PASA' ? null : 'NO_PASA')}
-              className={`rounded-md border px-2.5 py-1 text-xs ${f.resultado === 'NO_PASA' ? 'border-red-600 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-50'}`}>No seleccionar</button>
-          </>
-        )}
-        <button className="btn-secundario btn-chico" onClick={onAbrir}>Ver ficha</button>
-      </div>
-    </div>
+    <tr className={f.resultado === 'PASA' ? 'bg-green-50/50' : f.resultado === 'NO_PASA' ? 'bg-red-50/40' : ''}>
+      <td className="text-center" title={f.ranking?.puntaje_total != null ? `Puntaje ${nota(f.ranking.puntaje_total)}` : 'Posición en el ranking'}>
+        <div className="text-base font-bold text-gray-800">{f.ranking?.posicion ?? '—'}</div>
+        {f.ranking?.puntaje_total != null && <div className="text-[10px] text-gray-400">{nota(f.ranking.puntaje_total)} pts</div>}
+      </td>
+      <td className="min-w-[200px]">
+        <button className="text-left font-medium hover:underline" onClick={onAbrir}>{nombreCompleto(f)}</button>
+        <div className="max-w-[240px] truncate text-xs text-gray-500" title={f.liceo}><span className="font-mono text-gray-700">{f.codigo}</span> · {f.liceo}{f.comuna ? ` · ${f.comuna}` : ''}</div>
+      </td>
+      <td className="whitespace-nowrap">
+        <div className="text-sm">{f.promedio !== null ? nota(f.promedio) : '—'}{f.posicion_curso ? <span className="text-xs text-gray-400" title="Posición en su curso"> · N°{f.posicion_curso}</span> : null}</div>
+        <div className="mt-0.5">{rsh}</div>
+      </td>
+      <td className="min-w-[190px]">
+        {f.entrevistas.length === 0 && <span className="text-xs text-gray-400">sin entrevistas</span>}
+        <div className="space-y-1">
+          {f.entrevistas.map((e) => (
+            <div key={e.etapa_id} className="flex items-center gap-1.5 text-xs">
+              <span className="w-[84px] shrink-0 truncate text-gray-700" title={e.etapa}>{nombreCorto(e.etapa)}</span>
+              {e.estado && <span className={`whitespace-nowrap rounded border px-1 py-0.5 text-[10px] ${ESTADOS[e.estado].chip}`}>{ESTADOS[e.estado].texto}</span>}
+              {e.pauta
+                ? <button className="whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-800 hover:bg-blue-100" onClick={() => bajar(e)} title="Descargar el Word de la pauta completada">📄 Word</button>
+                : <span className="text-gray-300" title="Sin pauta completada">sin Word</span>}
+            </div>
+          ))}
+        </div>
+      </td>
+      <td className="whitespace-nowrap">
+        {ap ? <span className={`rounded border px-1.5 py-0.5 text-xs ${APRECIACIONES[ap].chip}`}>{APRECIACIONES[ap].texto}</span> : <span className="text-xs text-gray-400">sin apreciación</span>}
+      </td>
+      <td>
+        <div className="flex items-center justify-end gap-1.5">
+          <Decision f={f} soloLectura={soloLectura} ocupado={ocupado} onMarcar={onMarcar} />
+          <button className="btn-secundario btn-chico whitespace-nowrap" onClick={onAbrir}>Ver ficha</button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -264,11 +326,25 @@ function Dato({ t, v }: { t: string; v: React.ReactNode }) {
   return <div><dt className="text-[11px] text-gray-500">{t}</dt><dd className="text-sm">{v}</dd></div>;
 }
 
-function FichaFinalista({ f, soloLectura, onCerrar, onCambio }: { f: Finalista; soloLectura: boolean; onCerrar: () => void; onCambio: () => void }) {
+function FichaFinalista({ f, soloLectura, ocupado, onCerrar, onCambio, onMarcar }: {
+  f: Finalista; soloLectura: boolean; ocupado: boolean; onCerrar: () => void; onCambio: () => void; onMarcar: (r: Resultado) => void;
+}) {
   const fi = f.ficha;
+  const ap = apreciacionActual(f);
   return (
     <Modal titulo={nombreCompleto(f)} onCerrar={onCerrar} ancho="max-w-3xl" pie={<button className="btn-secundario" onClick={onCerrar}>Cerrar</button>}>
       <div className="space-y-5 text-sm">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="text-center"><div className="text-xl font-bold">{f.ranking?.posicion ?? '—'}</div><div className="text-[10px] uppercase text-gray-400">ranking</div></div>
+          {f.ranking?.puntaje_total != null && <div className="text-center"><div className="text-xl font-bold">{nota(f.ranking.puntaje_total)}</div><div className="text-[10px] uppercase text-gray-400">puntaje</div></div>}
+          {f.promedio !== null && <div className="text-center"><div className="text-xl font-bold">{nota(f.promedio)}</div><div className="text-[10px] uppercase text-gray-400">promedio</div></div>}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {fi && (fi.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : fi.tramo_rsh !== null && <Etiqueta>RSH {fi.tramo_rsh}%</Etiqueta>)}
+            {ap ? <span className={`rounded border px-1.5 py-0.5 text-xs ${APRECIACIONES[ap].chip}`}>{APRECIACIONES[ap].texto}</span> : <span className="text-xs text-gray-400">sin apreciación</span>}
+          </div>
+          <div className="ml-auto"><Decision f={f} soloLectura={soloLectura} ocupado={ocupado} onMarcar={onMarcar} /></div>
+        </div>
+
         <section>
           <h3 className="subtitulo mb-2">Datos</h3>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
