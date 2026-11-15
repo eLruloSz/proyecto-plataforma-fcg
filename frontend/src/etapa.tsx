@@ -18,6 +18,9 @@ export function tipoEtapa(e: Pick<Etapa, 'clave' | 'orden'>): TipoEtapa {
   return 'GENERAL';
 }
 
+/** Nombre corto de una etapa de entrevista para botones: "Preselección N°2" → "Preselección", "Selección de becarios" → "Selección". */
+export const etiquetaEntrevista = (nombre: string) => nombre.replace(/^Preselección.*/i, 'Preselección').replace(/^Selección.*/i, 'Selección');
+
 export interface ItemMenu { a: string; texto: string }
 
 /**

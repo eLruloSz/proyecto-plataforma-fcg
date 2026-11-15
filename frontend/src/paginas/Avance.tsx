@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, CargaRanking, Encuentro, Invitado, VistaAvance } from '../api';
 import { useProceso } from '../Layout';
-import { tipoEtapa, useEtapa } from '../etapa';
+import { etiquetaEntrevista, tipoEtapa, useEtapa } from '../etapa';
 import { TerminarEtapa } from './TerminarEtapa';
 import { FechasEncuentro, fechaEncuentro, InscribirEnBloque, RegistrarAsistencia, useEncuentros } from './Encuentro';
 import { ImportarContactos } from './ImportarContactos';
@@ -485,11 +485,11 @@ export function Avance() {
                         {f.entrevista_fecha && <span className="ml-1.5 text-gray-500">{fecha(f.entrevista_fecha)}</span>}
                       </Link>
                       {(f.pautas_completadas ?? []).map((pc) => (
-                        <button key={pc.etapa_id} className="ml-1.5 rounded border border-[#2B579A]/30 bg-blue-50 px-1.5 py-0.5 text-[#2B579A] hover:bg-blue-100"
+                        <button key={pc.etapa_id} className="btn-word btn-chico ml-1.5"
                           title={`Pauta completada de la entrevista (${pc.etapa}), subida ${fecha(pc.subido_en)}`}
                           onClick={() => api.descargar(`/entrevistas/${pc.etapa_id}/estudiantes/${f.id}/pauta-completada`, `Pauta completada ${f.codigo} ${f.apellido_paterno} ${f.nombres}.docx`)
                             .catch((err: Error) => avisar(err.message, 'error'))}>
-                          📄 Pauta{(f.pautas_completadas?.length ?? 0) > 1 ? ` · ${pc.etapa}` : ''}
+                          {etiquetaEntrevista(pc.etapa)}
                         </button>
                       ))}
                     </td>

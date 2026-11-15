@@ -1,5 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { AvanceService } from '../avance/avance.service';
+import { MailerService } from '../comunicacion/mailer.service';
+import { agregarHoja, Columna, crearLibro, nombreArchivo } from '../exportacion/excel-util';
 import { AuditoriaService } from '../common/auditoria.service';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 
@@ -21,6 +24,13 @@ const SUGERENCIA: Record<Apreciacion, 'PASA' | 'NO_PASA' | null> = {
 };
 
 type Fila = Record<string, any>;
+export type Decision = 'PASA' | 'NO_PASA' | 'ESPERA';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const TEXTO_APRECIACION: Record<Apreciacion, string> = {
+  ACEPTARIA: 'Aceptaría', ACEPTARIA_CON_DUDAS: 'Aceptaría con dudas', NO_ACEPTARIA: 'No aceptaría',
+};
+const etapaCorta = (n: string) => n.replace(/^Preselección.*/i, 'Preselección').replace(/^Selección.*/i, 'Selección');
 
 @Injectable()
 export class SeleccionService {
@@ -28,6 +38,8 @@ export class SeleccionService {
     private readonly ds: DataSource,
     private readonly proceso: ProcesoActualService,
     private readonly auditoria: AuditoriaService,
+    private readonly avance: AvanceService,
+    private readonly mailer: MailerService,
   ) {}
 
   /** Solo la etapa de selección final tiene esta pantalla. */
@@ -57,6 +69,7 @@ export class SeleccionService {
               l.codigo AS liceo_codigo, l.nombre AS liceo, l.comuna,
               (p.etapa_id = $1) AS en_esta_etapa,
               r.resultado, COALESCE(r.confirmado, FALSE) AS confirmado,
+              (COALESCE(sx.en_espera, FALSE) AND r.resultado IS NULL) AS en_espera, sx.notas,
               (SELECT to_jsonb(fi) - 'postulacion_id' - 'actualizado_por' FROM fichas_postulacion fi WHERE fi.postulacion_id = p.id) AS ficha,
               (SELECT jsonb_build_object('posicion', rp.posicion, 'puntaje_total', rp.puntaje_total::float, 'rsh', rp.rsh)
                  FROM ranking_postulacion rp JOIN cargas ca ON ca.id = rp.carga_id
@@ -81,13 +94,18 @@ export class SeleccionService {
          JOIN personas pe ON pe.id = p.persona_id
          JOIN liceos l ON l.id = p.liceo_id
          LEFT JOIN resultados_etapa r ON r.postulacion_id = p.id AND r.etapa_id = $1
+         LEFT JOIN seleccion_extra sx ON sx.postulacion_id = p.id AND sx.etapa_id = $1
         WHERE p.proceso_id = $3 AND (p.etapa_id = $1 OR (r.confirmado AND r.etapa_id = $1))
         ORDER BY (SELECT rp.posicion FROM ranking_postulacion rp JOIN cargas ca ON ca.id = rp.carga_id
                    WHERE rp.postulacion_id = p.id AND ca.tipo = 'RANKING' AND ca.proceso_id = p.proceso_id
                    ORDER BY ca.cargado_en DESC LIMIT 1) NULLS LAST, p.correlativo`,
       [etapaId, e.orden, await this.proceso.id()]);
 
-    const candidatos: Fila[] = filas.map((f) => ({ ...f, sugerencia: this.sugerir(f.entrevistas) }));
+    // La lista de espera sigue el ranking (las filas ya vienen ordenadas por él): el primero es el N°1.
+    let puesto = 0;
+    const candidatos: Fila[] = filas.map((f) => ({
+      ...f, sugerencia: this.sugerir(f.entrevistas), puesto_espera: f.en_espera && !f.confirmado ? ++puesto : null,
+    }));
     const vivos = candidatos.filter((c) => c.en_esta_etapa && !c.confirmado);
     const becarios = candidatos.filter((c) => c.confirmado && c.resultado === 'PASA').length;
     const marcadosPasa = vivos.filter((c) => c.resultado === 'PASA').length;
@@ -97,12 +115,13 @@ export class SeleccionService {
       becarios_confirmados: becarios,
       marcados_pasa: marcadosPasa,
       marcados_no_pasa: vivos.filter((c) => c.resultado === 'NO_PASA').length,
-      sin_decidir: vivos.filter((c) => !c.resultado).length,
+      en_espera: vivos.filter((c) => !c.resultado && c.en_espera).length,
+      sin_decidir: vivos.filter((c) => !c.resultado && !c.en_espera).length,
       // Cupos que quedan si se confirman todas las marcas "pasa".
       cupos_libres: e.cupo === null ? null : e.cupo - becarios - marcadosPasa,
       con_apreciacion: candidatos.filter((c) => c.sugerencia).length,
-      sugeridos_pasa: vivos.filter((c) => !c.resultado && c.sugerencia?.resultado === 'PASA').length,
-      sugeridos_no_pasa: vivos.filter((c) => !c.resultado && c.sugerencia?.resultado === 'NO_PASA').length,
+      sugeridos_pasa: vivos.filter((c) => !c.resultado && !c.en_espera && c.sugerencia?.resultado === 'PASA').length,
+      sugeridos_no_pasa: vivos.filter((c) => !c.resultado && !c.en_espera && c.sugerencia?.resultado === 'NO_PASA').length,
     };
     return { etapa: e, resumen, candidatos };
   }
@@ -160,6 +179,7 @@ export class SeleccionService {
               AND x.clave IN ('ENTREVISTA', 'ENTREVISTA_COMITE') AND x.orden <= $3
             ORDER BY x.orden DESC LIMIT 1) a ON TRUE
         WHERE p.etapa_id = $1 AND a.apreciacion IN ('ACEPTARIA', 'NO_ACEPTARIA')
+          AND NOT EXISTS (SELECT 1 FROM seleccion_extra sx WHERE sx.postulacion_id = p.id AND sx.etapa_id = $1 AND sx.en_espera)
        ON CONFLICT (postulacion_id, etapa_id) DO NOTHING
        RETURNING id`,
       [etapaId, usuarioId, e.orden]);
@@ -167,5 +187,111 @@ export class SeleccionService {
     const marcados = Array.isArray(r[0]) ? (r[0] as unknown as Fila[]).length : r.length;
     await this.auditoria.registrar(usuarioId, 'SUGERENCIAS_SELECCION', 'etapas', etapaId, { marcados });
     return { marcados };
+  }
+
+  // -------------------------------------------------------------------------
+  // Decisión con tres opciones, notas del comité, Excel y correo a la dirección
+  // -------------------------------------------------------------------------
+
+  /**
+   * Seleccionar / No seleccionar usan lo mismo que "Resultados" (marca provisoria, se confirma aparte).
+   * "En espera" no es un resultado: quita la marca provisoria y deja la anotación en esta pantalla.
+   */
+  async decidir(etapaId: string, postulacionId: string, decision: Decision | null, usuarioId: string) {
+    await this.etapaFinal(etapaId);
+    if (decision === 'ESPERA') {
+      await this.avance.marcar(etapaId, postulacionId, null, usuarioId); // falla si ya está confirmado
+      await this.ds.query(
+        `INSERT INTO seleccion_extra (postulacion_id, etapa_id, en_espera, actualizado_por) VALUES ($1, $2, TRUE, $3)
+         ON CONFLICT (postulacion_id, etapa_id) DO UPDATE SET en_espera = TRUE, actualizado_por = $3, actualizado_en = NOW()`,
+        [postulacionId, etapaId, usuarioId]);
+    } else {
+      await this.avance.marcar(etapaId, postulacionId, decision, usuarioId);
+      await this.ds.query(
+        `UPDATE seleccion_extra SET en_espera = FALSE, actualizado_por = $3, actualizado_en = NOW()
+          WHERE postulacion_id = $1 AND etapa_id = $2 AND en_espera`, [postulacionId, etapaId, usuarioId]);
+    }
+    await this.auditoria.registrar(usuarioId, 'DECISION_SELECCION', 'postulaciones', postulacionId, { etapaId, decision });
+    return { ok: true };
+  }
+
+  async guardarNotas(etapaId: string, postulacionId: string, notas: string | null, usuarioId: string) {
+    await this.etapaFinal(etapaId);
+    const [p] = await this.ds.query(`SELECT id FROM postulaciones WHERE id = $1 AND proceso_id = $2`, [postulacionId, await this.proceso.id()]);
+    if (!p) throw new NotFoundException('Estudiante no encontrado.');
+    const limpia = notas?.trim() || null;
+    await this.ds.query(
+      `INSERT INTO seleccion_extra (postulacion_id, etapa_id, notas, actualizado_por) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (postulacion_id, etapa_id) DO UPDATE SET notas = $3, actualizado_por = $4, actualizado_en = NOW()`,
+      [postulacionId, etapaId, limpia, usuarioId]);
+    await this.auditoria.registrar(usuarioId, 'NOTAS_COMITE', 'postulaciones', postulacionId, { etapaId });
+    return { ok: true };
+  }
+
+  /** Excel para la dirección: solo lo importante para decidir (de los puntajes va únicamente la posición del ranking). */
+  async excelDireccion(etapaId: string) {
+    const v = await this.vista(etapaId);
+    const decision = (f: Fila) =>
+      f.confirmado ? (f.resultado === 'PASA' ? 'Becario/a' : 'No seleccionado/a')
+        : f.resultado === 'PASA' ? 'Seleccionado/a' : f.resultado === 'NO_PASA' ? 'No seleccionado/a'
+        : f.en_espera ? `En espera (N°${f.puesto_espera})` : null;
+    const tramo = (f: Fila) => (f.ficha?.rsh_pendiente ? 'Pendiente' : f.ficha?.tramo_rsh != null ? `${f.ficha.tramo_rsh}%` : null);
+    const observaciones = (f: Fila) => (f.entrevistas as Fila[])
+      .filter((e) => e.observaciones).map((e) => `${etapaCorta(e.etapa)}: ${e.observaciones}`).join('\n') || null;
+    const cols: Columna<Fila>[] = [
+      { titulo: 'Ranking', valor: (f) => f.ranking?.posicion, ancho: 9 },
+      { titulo: 'Id', valor: (f) => f.codigo, ancho: 11 },
+      { titulo: 'Nombre', valor: (f) => `${f.nombres} ${f.apellido_paterno}${f.apellido_materno ? ' ' + f.apellido_materno : ''}`, ancho: 28 },
+      { titulo: 'Liceo', valor: (f) => f.liceo, ancho: 30 },
+      { titulo: 'Comuna', valor: (f) => f.comuna },
+      { titulo: 'Curso', valor: (f) => f.curso },
+      { titulo: 'Promedio', valor: (f) => f.promedio, formato: '0.00' },
+      { titulo: 'Posición en el curso', valor: (f) => f.posicion_curso },
+      { titulo: 'Tramo RSH', valor: tramo },
+      { titulo: 'Personas del hogar', valor: (f) => f.ficha?.personas_hogar ?? f.ficha?.personas_formulario },
+      { titulo: 'Apreciación de la entrevista', valor: (f) => (f.sugerencia ? TEXTO_APRECIACION[f.sugerencia.apreciacion as Apreciacion] : null), ancho: 20 },
+      { titulo: 'Observaciones de la entrevista', valor: observaciones, ancho: 45 },
+      { titulo: 'Decisión', valor: decision, ancho: 18 },
+      { titulo: 'Notas del comité', valor: (f) => f.notas, ancho: 40 },
+    ];
+    const wb = crearLibro();
+    agregarHoja(wb, 'Selección final', cols, v.candidatos);
+    const hoja = wb.getWorksheet('Selección final');
+    hoja?.eachRow((row) => row.eachCell((c) => { c.alignment = { ...c.alignment, vertical: 'top', wrapText: true }; }));
+    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+    const r = v.resumen;
+    return {
+      buffer, nombre: nombreArchivo(`Selección final - ${v.etapa.nombre}.xlsx`),
+      resumen: { total: r.total, cupo: r.cupo, asignadas: r.becarios_confirmados + r.marcados_pasa, espera: r.en_espera },
+    };
+  }
+
+  /** Cuentas de solo lectura activas (los directivos): son los destinatarios sugeridos. */
+  async directivos() {
+    return this.ds.query(`SELECT nombre_completo AS nombre, email FROM usuarios WHERE rol = 'LECTOR' AND activo AND email IS NOT NULL ORDER BY nombre_completo`);
+  }
+
+  async enviarADirectivos(etapaId: string, para: string[], mensaje: string | undefined, u: { id: string; email: string; nombre: string }) {
+    const x = await this.excelDireccion(etapaId);
+    const unicos = [...new Set(para.map((c) => c.trim().toLowerCase()).filter(Boolean))];
+    if (!unicos.length) throw new BadRequestException('Falta al menos un destinatario.');
+    const r = x.resumen;
+    const texto = [
+      'Estimados:',
+      '',
+      mensaje?.trim() || 'Les enviamos el resumen de los finalistas de la Beca Carmen Goudie para la decisión final.',
+      '',
+      `Finalistas: ${r.total}.${r.cupo !== null ? ` Cupo: ${r.cupo}. Becas asignadas hasta ahora: ${r.asignadas}.` : ''}${r.espera ? ` En lista de espera: ${r.espera}.` : ''}`,
+      'Adjuntamos el Excel con la información principal de cada estudiante.',
+      '',
+      'Saludos,',
+      u.nombre,
+    ].join('\n');
+    await this.mailer.enviar({
+      para: unicos.join(', '), asunto: 'Beca Carmen Goudie — finalistas para la selección final', texto, responderA: u.email,
+      adjuntos: [{ nombre: x.nombre, contenido: x.buffer, tipo: XLSX }],
+    });
+    await this.auditoria.registrar(u.id, 'ENVIAR_RESUMEN_DIRECTIVOS', 'etapas', etapaId, { destinatarios: unicos.length });
+    return { enviados: unicos.length, simulacion: this.mailer.modoSimulacion };
   }
 }

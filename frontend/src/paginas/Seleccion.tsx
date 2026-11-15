@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, FichaPostulacion } from '../api';
-import { useEtapa } from '../etapa';
+import { etiquetaEntrevista, useEtapa } from '../etapa';
 import { subirPautaCompletada } from '../pautas';
 import { useSesion } from '../sesion';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nombreCompleto, nota, useAviso, Vacio } from '../ui';
@@ -16,6 +16,8 @@ import { ESTADOS } from './Entrevistas';
 
 type Apreciacion = 'ACEPTARIA' | 'ACEPTARIA_CON_DUDAS' | 'NO_ACEPTARIA';
 type Resultado = 'PASA' | 'NO_PASA' | null;
+/** Lo que se elige en esta pantalla: seleccionar, dejar en espera o no seleccionar (null = quitar la marca). */
+type Eleccion = 'PASA' | 'NO_PASA' | 'ESPERA' | null;
 
 interface EntrevistaFinalista {
   etapa_id: string; etapa: string; orden: number; fecha_hora: string | null; estado: keyof typeof ESTADOS | null; realizada: boolean;
@@ -27,6 +29,8 @@ interface Finalista {
   nombres: string; apellido_paterno: string; apellido_materno: string | null; email: string | null; telefono: string | null;
   liceo_codigo: string; liceo: string; comuna: string | null; en_esta_etapa: boolean;
   resultado: Resultado; confirmado: boolean;
+  /** En lista de espera (no es un resultado de la etapa) y su puesto, que sigue el ranking. */
+  en_espera: boolean; puesto_espera: number | null; notas: string | null;
   ficha: FichaPostulacion | null;
   ranking: { posicion: number | null; puntaje_total: number | null; rsh: string | null } | null;
   entrevistas: EntrevistaFinalista[];
@@ -35,7 +39,7 @@ interface Finalista {
 interface VistaSeleccion {
   etapa: { id: string; orden: number; nombre: string; cupo: number | null; estado: string };
   resumen: {
-    cupo: number | null; total: number; becarios_confirmados: number; marcados_pasa: number; marcados_no_pasa: number; sin_decidir: number;
+    cupo: number | null; total: number; becarios_confirmados: number; marcados_pasa: number; marcados_no_pasa: number; en_espera: number; sin_decidir: number;
     cupos_libres: number | null; con_apreciacion: number; sugeridos_pasa: number; sugeridos_no_pasa: number;
   };
   candidatos: Finalista[];
@@ -48,7 +52,7 @@ const APRECIACIONES: Record<Apreciacion, { texto: string; chip: string; activo: 
 };
 const ORDEN_APRECIACION = Object.keys(APRECIACIONES) as Apreciacion[];
 
-type Filtro = 'todos' | 'sin-decidir' | 'seleccionados' | 'no-seleccionados' | 'sin-apreciacion' | 'aceptaria' | 'con-dudas' | 'no-aceptaria';
+type Filtro = 'todos' | 'sin-decidir' | 'seleccionados' | 'en-espera' | 'no-seleccionados' | 'sin-apreciacion' | 'aceptaria' | 'con-dudas' | 'no-aceptaria';
 type Orden = 'ranking' | 'id' | 'apreciacion';
 const CLAVES = ['seleccion', 'avance', 'proceso', 'dashboard', 'tareas', 'entrevistas'];
 
@@ -80,14 +84,21 @@ export function Seleccion() {
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [liceoFiltro, setLiceoFiltro] = useState('');
   const [orden, setOrden] = useState<Orden>('ranking');
+  // La ficha navega por la lista tal como estaba al abrirla (así, si marcar una decisión saca al estudiante
+  // del filtro actual, las flechas no se pierden).
   const [abierto, setAbierto] = useState<string | null>(null);
+  const [recorrido, setRecorrido] = useState<string[]>([]);
   const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [marcadas, setMarcadas] = useState<string[]>([]); // para comparar (máximo 3)
+  const [comparando, setComparando] = useState(false);
+  const [bajandoExcel, setBajandoExcel] = useState(false);
 
   const refrescar = () => CLAVES.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const errorAviso = (e: Error) => avisar(e.message, 'error');
 
   const marcar = useMutation({
-    mutationFn: (x: { f: Finalista; resultado: Resultado }) => api.put(`/avance/${etapaId}/estudiantes/${x.f.id}/resultado`, { resultado: x.resultado }),
+    mutationFn: (x: { f: Finalista; decision: Eleccion }) => api.put(`/seleccion/${etapaId}/estudiantes/${x.f.id}/decision`, { decision: x.decision }),
     onSuccess: refrescar, onError: errorAviso,
   });
   const sugerencias = useMutation({
@@ -100,6 +111,16 @@ export function Seleccion() {
     onSuccess: (r) => { avisar(`Confirmado: ${r.pasan} becarios, ${r.noPasan} no seleccionados`); setConfirmando(false); refrescar(); },
     onError: errorAviso,
   });
+
+  const bajarExcel = async () => {
+    if (!v) return;
+    setBajandoExcel(true);
+    try { await api.descargar(`/seleccion/${etapaId}/excel`, `Selección final - ${v.etapa.nombre}.xlsx`); }
+    catch (err) { avisar((err as Error).message, 'error'); }
+    finally { setBajandoExcel(false); }
+  };
+  const alternarComparar = (id: string) => setMarcadas((m) => (m.includes(id) ? m.filter((x) => x !== id) : m.length >= 3 ? m : [...m, id]));
+  const abrirFicha = (id: string) => { setRecorrido(lista.map((x) => x.id)); setAbierto(id); };
 
   const liceos = useMemo(() => {
     const m = new Map<string, string>();
@@ -114,8 +135,9 @@ export function Seleccion() {
       if (q && !sinTildes(`${nombreCompleto(f)} ${f.codigo} ${f.liceo}`).includes(q)) return false;
       if (liceoFiltro && f.liceo_codigo !== liceoFiltro) return false;
       switch (filtro) {
-        case 'sin-decidir': return !f.confirmado && !f.resultado;
+        case 'sin-decidir': return !f.confirmado && !f.resultado && !f.en_espera;
         case 'seleccionados': return f.resultado === 'PASA';
+        case 'en-espera': return f.en_espera;
         case 'no-seleccionados': return f.resultado === 'NO_PASA';
         case 'sin-apreciacion': return !f.sugerencia;
         case 'aceptaria': return apreciacionActual(f) === 'ACEPTARIA';
@@ -151,35 +173,59 @@ export function Seleccion() {
       </div>
 
       {/* Cupo y avance de la decisión */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <div className="tarjeta p-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+        <div className="tarjeta col-span-2 p-3 md:col-span-2">
           <div className={`text-xl font-bold ${sobreCupo ? 'text-red-700' : ''}`}>
-            {pasanTodos}{r.cupo !== null && <span className="text-sm font-normal text-gray-400"> / {r.cupo}</span>}
+            {pasanTodos}{r.cupo !== null && <span className="text-sm font-normal text-gray-400"> de {r.cupo}</span>}
           </div>
           <div className="text-xs text-gray-500">{r.cupo !== null ? 'becas asignadas / cupo' : 'becas asignadas (sin cupo definido)'}</div>
+          {r.cupo !== null && (
+            <>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100" role="progressbar" aria-valuemin={0} aria-valuemax={r.cupo} aria-valuenow={pasanTodos}>
+                <div className={`h-2 rounded-full ${sobreCupo ? 'bg-red-500' : 'bg-green-600'}`} style={{ width: `${Math.min(100, (pasanTodos / r.cupo) * 100)}%` }} />
+              </div>
+              <div className={`mt-1 text-[11px] ${sobreCupo ? 'font-medium text-red-700' : 'text-gray-500'}`}>
+                {sobreCupo ? `Se pasan del cupo por ${pasanTodos - r.cupo}` : r.cupo - pasanTodos === 0 ? 'Cupo completo' : `${r.cupo - pasanTodos} cupos libres`}
+              </div>
+            </>
+          )}
         </div>
         <div className="tarjeta p-3"><div className="text-xl font-bold text-green-700">{r.becarios_confirmados}</div><div className="text-xs text-gray-500">becarios confirmados</div></div>
         <div className="tarjeta p-3"><div className="text-xl font-bold text-green-700">{r.marcados_pasa}</div><div className="text-xs text-gray-500">seleccionados sin confirmar</div></div>
-        <div className="tarjeta p-3"><div className="text-xl font-bold text-red-700">{r.marcados_no_pasa}</div><div className="text-xs text-gray-500">no seleccionados sin confirmar</div></div>
-        <div className="tarjeta p-3"><div className="text-xl font-bold">{r.sin_decidir}</div><div className="text-xs text-gray-500">sin decidir</div></div>
+        <div className="tarjeta p-3"><div className="text-xl font-bold text-amber-700">{r.en_espera}</div><div className="text-xs text-gray-500">en lista de espera</div></div>
+        <div className="tarjeta p-3"><div className="text-xl font-bold">{r.sin_decidir}</div><div className="text-xs text-gray-500">sin decidir <span className="text-red-700">· {r.marcados_no_pasa} no sel.</span></div></div>
       </div>
       {sobreCupo && <Caja tono="amarillo">Hay más becas asignadas ({pasanTodos}) que el cupo ({r.cupo}). Revisa antes de confirmar.</Caja>}
       {r.cupos_libres !== null && r.cupos_libres > 0 && r.sin_decidir === 0 && pendientesDeConfirmar === 0 && (
         <Caja tono="azul">Quedan {r.cupos_libres} cupos sin asignar.</Caja>
       )}
 
-      {!soloLectura && (
-        <div className="tarjeta flex flex-wrap items-center gap-3 p-3">
-          <button className="btn-secundario" disabled={!sugeridos || sugerencias.isPending} onClick={() => sugerencias.mutate()}
-            title="Marca “seleccionado” a quien la entrevista dice que aceptaría y “no seleccionado” a quien no aceptaría. Las marcas son provisorias y se pueden cambiar.">
-            ✓ Marcar según apreciación ({sugeridos})
+      <div className="tarjeta flex flex-wrap items-center gap-2 p-3">
+        {!soloLectura && (
+          <>
+            <button className="btn-secundario" disabled={!sugeridos || sugerencias.isPending} onClick={() => sugerencias.mutate()}
+              title="Marca “seleccionado” a quien la entrevista dice que aceptaría y “no seleccionado” a quien no aceptaría. Las marcas son provisorias y se pueden cambiar.">
+              ✓ Marcar según apreciación ({sugeridos})
+            </button>
+            <button className="btn-primario" disabled={!pendientesDeConfirmar} onClick={() => setConfirmando(true)}>
+              Confirmar selección ({pendientesDeConfirmar})
+            </button>
+          </>
+        )}
+        <button className="btn-secundario" disabled={marcadas.length < 2} onClick={() => setComparando(true)}
+          title="Marca de 2 a 3 finalistas en la tabla (casilla de la izquierda) para verlos lado a lado">
+          Comparar ({marcadas.length})
+        </button>
+        {marcadas.length > 0 && <button className="text-xs text-gray-500 underline hover:text-gray-800" onClick={() => setMarcadas([])}>quitar selección</button>}
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button className="btn-excel" disabled={bajandoExcel} onClick={bajarExcel}
+            title="Excel con lo importante de cada finalista: ranking, notas, RSH, apreciación, observaciones y decisión">
+            {bajandoExcel ? 'Preparando…' : '⬇ Exportar a Excel'}
           </button>
-          <button className="btn-primario" disabled={!pendientesDeConfirmar} onClick={() => setConfirmando(true)}>
-            Confirmar selección ({pendientesDeConfirmar})
-          </button>
-          <p className="text-xs text-gray-500">“Aceptaría con dudas” no se marca solo: lo decide una persona, caso por caso.</p>
+          {!soloLectura && <button className="btn-secundario" onClick={() => setEnviando(true)}>Enviar a los directivos</button>}
         </div>
-      )}
+        {!soloLectura && <p className="w-full text-xs text-gray-500">“Aceptaría con dudas” no se marca solo: lo decide una persona, caso por caso. Quien queda “en espera” no se confirma: sigue aquí por si se libera un cupo.</p>}
+      </div>
 
       {/* Búsqueda, filtros y orden */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -199,6 +245,7 @@ export function Seleccion() {
             <option value="todos">Todos</option>
             <option value="sin-decidir">Sin decidir</option>
             <option value="seleccionados">Seleccionados</option>
+            <option value="en-espera">En espera</option>
             <option value="no-seleccionados">No seleccionados</option>
             <option value="aceptaria">Apreciación: aceptaría</option>
             <option value="con-dudas">Apreciación: con dudas</option>
@@ -213,6 +260,7 @@ export function Seleccion() {
           <table className="tabla">
             <thead>
               <tr>
+                <th className="w-8" />
                 <th className="w-16 text-center">Ranking</th>
                 <th>Finalista</th>
                 <th>Notas y RSH</th>
@@ -223,14 +271,31 @@ export function Seleccion() {
             </thead>
             <tbody>
               {lista.map((f) => <FilaFinalista key={f.id} f={f} soloLectura={soloLectura} ocupado={marcar.isPending}
-                onAbrir={() => setAbierto(f.id)} onMarcar={(resultado) => marcar.mutate({ f, resultado })} />)}
+                comparar={marcadas.includes(f.id)} sinCupoParaComparar={marcadas.length >= 3 && !marcadas.includes(f.id)} onComparar={() => alternarComparar(f.id)}
+                onAbrir={() => abrirFicha(f.id)} onMarcar={(decision) => marcar.mutate({ f, decision })} />)}
             </tbody>
           </table>
         </div>
       )}
 
-      {fichaAbierta && <FichaFinalista f={fichaAbierta} soloLectura={soloLectura} ocupado={marcar.isPending} onCerrar={() => setAbierto(null)} onCambio={refrescar}
-    onMarcar={(resultado) => marcar.mutate({ f: fichaAbierta, resultado })} />}
+      {fichaAbierta && (() => {
+        const i = recorrido.indexOf(fichaAbierta.id);
+        const ir = (d: number) => { const id = recorrido[i + d]; if (id && v.candidatos.some((x) => x.id === id)) setAbierto(id); };
+        return (
+          <FichaFinalista key={fichaAbierta.id} f={fichaAbierta} soloLectura={soloLectura} ocupado={marcar.isPending}
+            etapaId={etapaId} posicion={i >= 0 ? i + 1 : null} total={recorrido.length}
+            onAnterior={i > 0 ? () => ir(-1) : null} onSiguiente={i >= 0 && i < recorrido.length - 1 ? () => ir(1) : null}
+            onCerrar={() => setAbierto(null)} onCambio={refrescar} onMarcar={(decision) => marcar.mutate({ f: fichaAbierta, decision })} />
+        );
+      })()}
+
+      {comparando && (
+        <Comparador finalistas={marcadas.map((id) => v.candidatos.find((x) => x.id === id)).filter((x): x is Finalista => !!x)}
+          soloLectura={soloLectura} ocupado={marcar.isPending} onCerrar={() => setComparando(false)}
+          onAbrir={(id) => { setComparando(false); abrirFicha(id); }} onMarcar={(f, decision) => marcar.mutate({ f, decision })} />
+      )}
+
+      {enviando && <EnviarDirectivos etapaId={etapaId} resumen={`${pasanTodos}${r.cupo !== null ? ` de ${r.cupo}` : ''} becas asignadas`} onCerrar={() => setEnviando(false)} />}
 
       {confirmando && (
         <Modal titulo="Confirmar selección" onCerrar={() => setConfirmando(false)} ancho="max-w-md"
@@ -241,6 +306,7 @@ export function Seleccion() {
           <div className="space-y-2 text-sm">
             <p><strong>{r.marcados_pasa}</strong> quedarán como <strong>becarios/as</strong> y <strong>{r.marcados_no_pasa}</strong> saldrán del proceso.</p>
             {sobreCupo && <p className="text-red-700">Ojo: con esto hay {pasanTodos} becas y el cupo es {r.cupo}.</p>}
+            {r.en_espera > 0 && <p><strong>{r.en_espera}</strong> en lista de espera siguen en esta etapa, sin confirmar.</p>}
             <p className="text-gray-500">Después se puede deshacer uno por uno desde Resultados. El aviso del resultado se envía desde ahí.</p>
           </div>
         </Modal>
@@ -249,27 +315,32 @@ export function Seleccion() {
   );
 }
 
-/** Botones de decisión: se usan en la tabla y dentro de la ficha. */
-function Decision({ f, soloLectura, ocupado, onMarcar }: { f: Finalista; soloLectura: boolean; ocupado: boolean; onMarcar: (r: Resultado) => void }) {
+/** Botones de decisión: se usan en la tabla, en la ficha y en el comparador. */
+function Decision({ f, soloLectura, ocupado, onMarcar }: { f: Finalista; soloLectura: boolean; ocupado: boolean; onMarcar: (d: Eleccion) => void }) {
   if (f.confirmado) return f.resultado === 'PASA' ? <Etiqueta tono="verde">Becario/a</Etiqueta> : <Etiqueta tono="rojo">No seleccionado/a</Etiqueta>;
+  const actual: Eleccion = f.resultado ?? (f.en_espera ? 'ESPERA' : null);
   if (soloLectura) {
-    return f.resultado === 'PASA' ? <Etiqueta tono="verde">Seleccionado/a</Etiqueta>
-      : f.resultado === 'NO_PASA' ? <Etiqueta tono="rojo">No seleccionado/a</Etiqueta> : <span className="text-xs text-gray-400">sin decidir</span>;
+    return actual === 'PASA' ? <Etiqueta tono="verde">Seleccionado/a</Etiqueta>
+      : actual === 'NO_PASA' ? <Etiqueta tono="rojo">No seleccionado/a</Etiqueta>
+      : actual === 'ESPERA' ? <Etiqueta tono="amarillo">En espera · N°{f.puesto_espera}</Etiqueta>
+      : <span className="text-xs text-gray-400">sin decidir</span>;
   }
+  const boton = (d: 'PASA' | 'ESPERA' | 'NO_PASA', texto: string, activo: string, hover: string) => (
+    <button disabled={ocupado} aria-pressed={actual === d} onClick={() => onMarcar(actual === d ? null : d)}
+      className={`whitespace-nowrap rounded-md border px-2.5 py-1 text-xs ${actual === d ? activo : `border-gray-300 bg-white text-gray-700 ${hover}`}`}>{texto}</button>
+  );
   return (
-    <div className="flex items-center gap-1.5">
-      <button disabled={ocupado} aria-pressed={f.resultado === 'PASA'} onClick={() => onMarcar(f.resultado === 'PASA' ? null : 'PASA')}
-        className={`whitespace-nowrap rounded-md border px-2.5 py-1 text-xs ${f.resultado === 'PASA' ? 'border-green-600 bg-green-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-green-50'}`}>Seleccionar</button>
-      <button disabled={ocupado} aria-pressed={f.resultado === 'NO_PASA'} onClick={() => onMarcar(f.resultado === 'NO_PASA' ? null : 'NO_PASA')}
-        className={`whitespace-nowrap rounded-md border px-2.5 py-1 text-xs ${f.resultado === 'NO_PASA' ? 'border-red-600 bg-red-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-50'}`}>No seleccionar</button>
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      {boton('PASA', 'Seleccionar', 'border-green-600 bg-green-600 text-white', 'hover:bg-green-50')}
+      {boton('ESPERA', actual === 'ESPERA' && f.puesto_espera ? `En espera · N°${f.puesto_espera}` : 'En espera', 'border-amber-500 bg-amber-500 text-white', 'hover:bg-amber-50')}
+      {boton('NO_PASA', 'No seleccionar', 'border-red-600 bg-red-600 text-white', 'hover:bg-red-50')}
     </div>
   );
 }
 
-const nombreCorto = (s: string) => s.replace(/^Preselección\s*/i, 'Presel. ').replace(/^Selección de becarios$/i, 'Selección final');
-
-function FilaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
-  f: Finalista; soloLectura: boolean; ocupado: boolean; onAbrir: () => void; onMarcar: (r: Resultado) => void;
+function FilaFinalista({ f, soloLectura, ocupado, comparar, sinCupoParaComparar, onComparar, onAbrir, onMarcar }: {
+  f: Finalista; soloLectura: boolean; ocupado: boolean; comparar: boolean; sinCupoParaComparar: boolean;
+  onComparar: () => void; onAbrir: () => void; onMarcar: (d: Eleccion) => void;
 }) {
   const avisar = useAviso();
   const ap = apreciacionActual(f);
@@ -279,13 +350,18 @@ function FilaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
   };
   const rsh = f.ficha ? (f.ficha.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : f.ficha.tramo_rsh !== null ? <Etiqueta>RSH {f.ficha.tramo_rsh}%</Etiqueta> : null) : null;
   return (
-    <tr className={f.resultado === 'PASA' ? 'bg-green-50/50' : f.resultado === 'NO_PASA' ? 'bg-red-50/40' : ''}>
+    <tr className={f.resultado === 'PASA' ? 'bg-green-50/50' : f.resultado === 'NO_PASA' ? 'bg-red-50/40' : f.en_espera ? 'bg-amber-50/50' : ''}>
+      <td className="w-8 text-center">
+        <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={comparar} disabled={sinCupoParaComparar} onChange={onComparar}
+          aria-label={`Comparar a ${nombreCompleto(f)}`} title={sinCupoParaComparar ? 'Se pueden comparar hasta 3 finalistas' : 'Marcar para comparar'} />
+      </td>
       <td className="text-center" title={f.ranking?.puntaje_total != null ? `Puntaje ${nota(f.ranking.puntaje_total)}` : 'Posición en el ranking'}>
         <div className="text-base font-bold text-gray-800">{f.ranking?.posicion ?? '—'}</div>
         {f.ranking?.puntaje_total != null && <div className="text-[10px] text-gray-400">{nota(f.ranking.puntaje_total)} pts</div>}
       </td>
       <td className="min-w-[200px]">
         <button className="text-left font-medium hover:underline" onClick={onAbrir}>{nombreCompleto(f)}</button>
+        {f.notas && <span className="ml-1.5 rounded bg-gray-100 px-1 text-[10px] text-gray-500" title={f.notas}>nota</span>}
         <div className="max-w-[240px] truncate text-xs text-gray-500" title={f.liceo}><span className="font-mono text-gray-700">{f.codigo}</span> · {f.liceo}{f.comuna ? ` · ${f.comuna}` : ''}</div>
       </td>
       <td className="whitespace-nowrap">
@@ -297,11 +373,10 @@ function FilaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
         <div className="space-y-1">
           {f.entrevistas.map((e) => (
             <div key={e.etapa_id} className="flex items-center gap-1.5 text-xs">
-              <span className="w-[84px] shrink-0 truncate text-gray-700" title={e.etapa}>{nombreCorto(e.etapa)}</span>
-              {e.estado && <span className={`whitespace-nowrap rounded border px-1 py-0.5 text-[10px] ${ESTADOS[e.estado].chip}`}>{ESTADOS[e.estado].texto}</span>}
               {e.pauta
-                ? <button className="whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-800 hover:bg-blue-100" onClick={() => bajar(e)} title="Descargar el Word de la pauta completada">📄 Word</button>
-                : <span className="text-gray-300" title="Sin pauta completada">sin Word</span>}
+                ? <button className="btn-word btn-chico" onClick={() => bajar(e)} title={`Pauta completada de ${e.etapa} · subida ${fecha(e.pauta.subido_en)}`}>{etiquetaEntrevista(e.etapa)}</button>
+                : <span className="text-gray-400" title={`Sin pauta completada de ${e.etapa}`}>{etiquetaEntrevista(e.etapa)} · sin Word</span>}
+              {e.estado && <span className={`whitespace-nowrap rounded border px-1 py-0.5 text-[10px] ${ESTADOS[e.estado].chip}`}>{ESTADOS[e.estado].texto}</span>}
             </div>
           ))}
         </div>
@@ -326,14 +401,66 @@ function Dato({ t, v }: { t: string; v: React.ReactNode }) {
   return <div><dt className="text-[11px] text-gray-500">{t}</dt><dd className="text-sm">{v}</dd></div>;
 }
 
-function FichaFinalista({ f, soloLectura, ocupado, onCerrar, onCambio, onMarcar }: {
-  f: Finalista; soloLectura: boolean; ocupado: boolean; onCerrar: () => void; onCambio: () => void; onMarcar: (r: Resultado) => void;
+/** Por qué se decidió así: lo escribe el comité, una nota por estudiante. */
+function NotasComite({ f, etapaId, soloLectura, onCambio }: { f: Finalista; etapaId: string; soloLectura: boolean; onCambio: () => void }) {
+  const avisar = useAviso();
+  const [texto, setTexto] = useState(f.notas ?? '');
+  const cambio = texto.trim() !== (f.notas ?? '');
+  const guardar = useMutation({
+    mutationFn: () => api.put(`/seleccion/${etapaId}/estudiantes/${f.id}/notas`, { notas: texto.trim() || null }),
+    onSuccess: () => { avisar('Notas guardadas'); onCambio(); },
+    onError: (err: Error) => avisar(err.message, 'error'),
+  });
+  if (soloLectura && !f.notas) return null;
+  return (
+    <section>
+      <h3 className="subtitulo mb-2">Notas del comité</h3>
+      <textarea rows={2} className="input" disabled={soloLectura} value={texto} maxLength={4000}
+        placeholder="Por qué se decidió así, acuerdos, condiciones…" onChange={(ev) => setTexto(ev.target.value)} />
+      {!soloLectura && (
+        <div className="mt-1.5 flex items-center justify-end gap-2">
+          {cambio && <span className="text-[11px] text-amber-700">Sin guardar</span>}
+          <button className="btn-primario btn-chico" disabled={!cambio || guardar.isPending} onClick={() => guardar.mutate()}>Guardar notas</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onAnterior, onSiguiente, onCerrar, onCambio, onMarcar }: {
+  f: Finalista; soloLectura: boolean; ocupado: boolean; etapaId: string; posicion: number | null; total: number;
+  onAnterior: (() => void) | null; onSiguiente: (() => void) | null; onCerrar: () => void; onCambio: () => void; onMarcar: (d: Eleccion) => void;
 }) {
   const fi = f.ficha;
   const ap = apreciacionActual(f);
+  const dicho = f.entrevistas.filter((e) => e.apreciacion || e.observaciones);
+
+  // Flechas del teclado para pasar de una ficha a otra (no se activan mientras se escribe).
+  useEffect(() => {
+    const tecla = (ev: KeyboardEvent) => {
+      const t = ev.target as HTMLElement | null;
+      if (t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName)) return;
+      if (ev.key === 'ArrowLeft' && onAnterior) onAnterior();
+      if (ev.key === 'ArrowRight' && onSiguiente) onSiguiente();
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [onAnterior, onSiguiente]);
+
   return (
-    <Modal titulo={nombreCompleto(f)} onCerrar={onCerrar} ancho="max-w-3xl" pie={<button className="btn-secundario" onClick={onCerrar}>Cerrar</button>}>
+    <Modal titulo={nombreCompleto(f)} onCerrar={onCerrar} ancho="max-w-3xl"
+      pie={<>
+        <div className="mr-auto flex items-center gap-2">
+          <button className="btn-secundario" disabled={!onAnterior} onClick={() => onAnterior?.()} title="Finalista anterior (flecha izquierda)">← Anterior</button>
+          {posicion !== null && <span className="text-xs text-gray-500">{posicion} de {total}</span>}
+          <button className="btn-secundario" disabled={!onSiguiente} onClick={() => onSiguiente?.()} title="Finalista siguiente (flecha derecha)">Siguiente →</button>
+        </div>
+        <button className="btn-secundario" onClick={onCerrar}>Cerrar</button>
+      </>}>
       <div className="space-y-5 text-sm">
+        <p className="-mt-1 text-xs text-gray-500">
+          <span className="font-mono text-gray-700">{f.codigo}</span> · {f.liceo}{f.comuna ? ` · ${f.comuna}` : ''}{f.curso ? ` · ${f.curso}` : ''}
+        </p>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
           <div className="text-center"><div className="text-xl font-bold">{f.ranking?.posicion ?? '—'}</div><div className="text-[10px] uppercase text-gray-400">ranking</div></div>
           {f.ranking?.puntaje_total != null && <div className="text-center"><div className="text-xl font-bold">{nota(f.ranking.puntaje_total)}</div><div className="text-[10px] uppercase text-gray-400">puntaje</div></div>}
@@ -344,6 +471,25 @@ function FichaFinalista({ f, soloLectura, ocupado, onCerrar, onCambio, onMarcar 
           </div>
           <div className="ml-auto"><Decision f={f} soloLectura={soloLectura} ocupado={ocupado} onMarcar={onMarcar} /></div>
         </div>
+
+        {dicho.length > 0 && (
+          <section className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+            <h3 className="subtitulo mb-2">Lo que se vio en las entrevistas</h3>
+            <div className="space-y-2.5">
+              {dicho.map((e) => (
+                <div key={e.etapa_id}>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <strong className="text-gray-800">{etiquetaEntrevista(e.etapa)}</strong>
+                    {e.apreciacion && <span className={`rounded border px-1.5 py-0.5 ${APRECIACIONES[e.apreciacion].chip}`}>{APRECIACIONES[e.apreciacion].texto}</span>}
+                  </div>
+                  {e.observaciones && <p className="mt-1 whitespace-pre-line text-sm text-gray-800">{e.observaciones}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <NotasComite f={f} etapaId={etapaId} soloLectura={soloLectura} onCambio={onCambio} />
 
         <section>
           <h3 className="subtitulo mb-2">Datos</h3>
@@ -381,9 +527,196 @@ function FichaFinalista({ f, soloLectura, ocupado, onCerrar, onCambio, onMarcar 
           <h3 className="subtitulo mb-2">Entrevistas</h3>
           {f.entrevistas.length === 0 && <p className="text-xs text-gray-500">Todavía no tiene entrevistas registradas.</p>}
           <div className="space-y-3">
-            {f.entrevistas.map((e) => <BloqueEntrevista key={e.etapa_id} f={f} e={e} soloLectura={soloLectura} onCambio={onCambio} />)}
+            {f.entrevistas.map((e) => <BloqueEntrevista key={`${f.id}:${e.etapa_id}`} f={f} e={e} soloLectura={soloLectura} onCambio={onCambio} />)}
           </div>
         </section>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Comparador: de 2 a 3 finalistas lado a lado
+// ---------------------------------------------------------------------------------------------------------
+
+interface FilaComparacion {
+  titulo: string;
+  valor: (f: Finalista) => number | null;      // para decidir qué resaltar
+  texto?: (f: Finalista) => ReactNode;          // lo que se muestra (si no, el valor)
+  mejor?: 'mayor' | 'menor';                    // desempeño: el mejor valor se pinta de verde
+  necesidad?: 'mayor' | 'menor';                // situación familiar: el valor de mayor necesidad se subraya (discreto)
+}
+const PUNTAJE_APRECIACION: Record<Apreciacion, number> = { ACEPTARIA: 3, ACEPTARIA_CON_DUDAS: 2, NO_ACEPTARIA: 1 };
+const textoRsh = (f: Finalista) => (f.ficha ? (f.ficha.rsh_pendiente ? 'Pendiente' : f.ficha.tramo_rsh !== null ? `${f.ficha.tramo_rsh}%` : null) : null);
+const numFicha = (campo: 'personas_hogar' | 'menores_18' | 'mayores_60' | 'con_discapacidad' | 'con_dependencia' | 'con_nee') =>
+  (f: Finalista) => f.ficha?.[campo] ?? null;
+
+const GRUPOS_COMPARACION: { titulo: string; filas: FilaComparacion[] }[] = [
+  { titulo: 'Desempeño', filas: [
+    { titulo: 'Ranking', valor: (f) => f.ranking?.posicion ?? null, mejor: 'menor' },
+    { titulo: 'Promedio', valor: (f) => f.promedio, texto: (f) => (f.promedio !== null ? nota(f.promedio) : null), mejor: 'mayor' },
+    { titulo: 'Posición en el curso', valor: (f) => f.posicion_curso, mejor: 'menor' },
+    { titulo: 'Apreciación', valor: (f) => { const a = apreciacionActual(f); return a ? PUNTAJE_APRECIACION[a] : null; },
+      texto: (f) => { const a = apreciacionActual(f); return a ? APRECIACIONES[a].texto : null; }, mejor: 'mayor' },
+  ] },
+  { titulo: 'Situación familiar', filas: [
+    // Tramo más bajo = hogar con menos recursos.
+    { titulo: 'Tramo RSH', valor: (f) => (f.ficha && !f.ficha.rsh_pendiente ? f.ficha.tramo_rsh : null), texto: textoRsh, necesidad: 'menor' },
+    { titulo: 'Personas del hogar', valor: numFicha('personas_hogar'), necesidad: 'mayor' },
+    { titulo: 'Ingresos del hogar', valor: () => null, texto: (f) => f.ficha?.ingresos_hogar ?? null },
+    { titulo: 'Menores de 18', valor: numFicha('menores_18'), necesidad: 'mayor' },
+    { titulo: 'Mayores de 60', valor: numFicha('mayores_60'), necesidad: 'mayor' },
+    { titulo: 'Con discapacidad', valor: numFicha('con_discapacidad'), necesidad: 'mayor' },
+    { titulo: 'Con dependencia', valor: numFicha('con_dependencia'), necesidad: 'mayor' },
+    { titulo: 'Con NEE', valor: numFicha('con_nee'), necesidad: 'mayor' },
+  ] },
+];
+
+/** Posiciones (0, 1, 2) cuyo valor es el mejor según la regla. Si hay menos de dos valores o son todos iguales, ninguna. */
+function extremos(valores: (number | null)[], regla: 'mayor' | 'menor' | undefined): Set<number> {
+  const definidos = valores.filter((x): x is number => x !== null);
+  if (!regla || definidos.length < 2 || definidos.every((x) => x === definidos[0])) return new Set();
+  const meta = regla === 'mayor' ? Math.max(...definidos) : Math.min(...definidos);
+  return new Set(valores.flatMap((x, i) => (x === meta ? [i] : [])));
+}
+
+function Comparador({ finalistas, soloLectura, ocupado, onCerrar, onAbrir, onMarcar }: {
+  finalistas: Finalista[]; soloLectura: boolean; ocupado: boolean; onCerrar: () => void; onAbrir: (id: string) => void; onMarcar: (f: Finalista, d: Eleccion) => void;
+}) {
+  const observaciones = (f: Finalista) => f.entrevistas.filter((e) => e.observaciones).map((e) => `${etiquetaEntrevista(e.etapa)}: ${e.observaciones}`).join('\n');
+  const columnas = `grid-cols-[150px_repeat(${finalistas.length},minmax(0,1fr))]`;
+  return (
+    <Modal titulo="Comparar finalistas" onCerrar={onCerrar} ancho="max-w-6xl" pie={<button className="btn-secundario" onClick={onCerrar}>Cerrar</button>}>
+      <div className="overflow-x-auto text-sm">
+        <div className={`grid min-w-[640px] ${columnas} gap-x-3`}>
+          <div />
+          {finalistas.map((f) => (
+            <div key={f.id} className="border-b border-gray-200 pb-2">
+              <button className="text-left font-semibold hover:underline" onClick={() => onAbrir(f.id)} title="Ver ficha completa">{nombreCompleto(f)}</button>
+              <div className="text-xs text-gray-500"><span className="font-mono text-gray-700">{f.codigo}</span> · {f.liceo}</div>
+            </div>
+          ))}
+
+          {GRUPOS_COMPARACION.map((g) => {
+            const filas = g.filas.filter((fila) => finalistas.some((f) => (fila.texto ? fila.texto(f) : fila.valor(f)) !== null));
+            if (!filas.length) return null;
+            return (
+              <div key={g.titulo} className="contents">
+                <div className={`col-span-full mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400`}>{g.titulo}</div>
+                {filas.map((fila) => {
+                  const valores = finalistas.map(fila.valor);
+                  const mejores = extremos(valores, fila.mejor);
+                  const necesitan = extremos(valores, fila.necesidad);
+                  return (
+                    <div key={fila.titulo} className="contents">
+                      <div className="border-b border-gray-100 py-1.5 text-xs text-gray-500">{fila.titulo}</div>
+                      {finalistas.map((f, i) => {
+                        const v = fila.texto ? fila.texto(f) : fila.valor(f);
+                        const vacio = v === null || v === undefined || v === '';
+                        return (
+                          <div key={f.id} className={`border-b border-gray-100 px-1.5 py-1.5 ${mejores.has(i) ? 'rounded bg-green-50 font-semibold text-green-800' : ''}`}
+                            title={mejores.has(i) ? 'Mejor de los comparados' : necesitan.has(i) ? 'Mayor necesidad de los comparados' : undefined}>
+                            {vacio ? <span className="text-gray-300">—</span>
+                              : necesitan.has(i) ? <span className="underline decoration-amber-500 decoration-2 underline-offset-4">{v}</span> : v}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {finalistas.some((f) => observaciones(f)) && (
+            <div className="contents">
+              <div className="col-span-full mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Entrevistas</div>
+              <div className="border-b border-gray-100 py-1.5 text-xs text-gray-500">Observaciones</div>
+              {finalistas.map((f) => <div key={f.id} className="whitespace-pre-line border-b border-gray-100 px-1.5 py-1.5 text-xs text-gray-700">{observaciones(f) || <span className="text-gray-300">—</span>}</div>)}
+            </div>
+          )}
+          {finalistas.some((f) => f.notas) && (
+            <div className="contents">
+              <div className="border-b border-gray-100 py-1.5 text-xs text-gray-500">Notas del comité</div>
+              {finalistas.map((f) => <div key={f.id} className="whitespace-pre-line border-b border-gray-100 px-1.5 py-1.5 text-xs text-gray-700">{f.notas || <span className="text-gray-300">—</span>}</div>)}
+            </div>
+          )}
+
+          <div className="contents">
+            <div className="py-3 text-xs text-gray-500">Decisión</div>
+            {finalistas.map((f) => (
+              <div key={f.id} className="py-2"><div className="flex justify-start"><Decision f={f} soloLectura={soloLectura} ocupado={ocupado} onMarcar={(d) => onMarcar(f, d)} /></div></div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <p className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-500">
+        <span><span className="rounded bg-green-50 px-1.5 py-0.5 font-semibold text-green-800">verde</span> mejor desempeño de los comparados</span>
+        <span><span className="underline decoration-amber-500 decoration-2 underline-offset-4">subrayado</span> mayor necesidad (hogar con menos recursos o más cargas)</span>
+        <span>Sin marca cuando los valores son iguales o falta el dato.</span>
+      </p>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Correo a los directivos
+// ---------------------------------------------------------------------------------------------------------
+
+function EnviarDirectivos({ etapaId, resumen, onCerrar }: { etapaId: string; resumen: string; onCerrar: () => void }) {
+  const avisar = useAviso();
+  const { data, isLoading } = useQuery({
+    queryKey: ['seleccion-directivos', etapaId], queryFn: () => api.get<{ nombre: string; email: string }[]>(`/seleccion/${etapaId}/directivos`),
+  });
+  const [quitados, setQuitados] = useState<Set<string>>(new Set());
+  const [extra, setExtra] = useState('');
+  const [mensaje, setMensaje] = useState('');
+  const directivos = data ?? [];
+  const adicionales = [...new Set(extra.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const invalidos = adicionales.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+  const para = [...new Set([...directivos.filter((d) => !quitados.has(d.email)).map((d) => d.email.toLowerCase()), ...adicionales.filter((x) => !invalidos.includes(x))])];
+
+  const enviar = useMutation({
+    mutationFn: () => api.post<{ enviados: number; simulacion: boolean }>(`/seleccion/${etapaId}/enviar-directivos`, { para, mensaje: mensaje.trim() || undefined }),
+    onSuccess: (r) => { avisar(`Correo enviado a ${r.enviados} ${r.enviados === 1 ? 'persona' : 'personas'}${r.simulacion ? ' (modo de prueba: no salió realmente)' : ''}`); onCerrar(); },
+    onError: (e: Error) => avisar(e.message, 'error'),
+  });
+
+  return (
+    <Modal titulo="Enviar a los directivos" onCerrar={onCerrar} ancho="max-w-lg"
+      pie={<>
+        <button className="btn-secundario" onClick={onCerrar}>Cancelar</button>
+        <button className="btn-primario" disabled={!para.length || invalidos.length > 0 || enviar.isPending} onClick={() => enviar.mutate()}>
+          {enviar.isPending ? 'Enviando…' : `Enviar a ${para.length} ${para.length === 1 ? 'persona' : 'personas'}`}
+        </button>
+      </>}>
+      <div className="space-y-4 text-sm">
+        <p className="text-gray-600">Se envía un correo con el Excel adjunto: lo importante de cada finalista y su decisión actual ({resumen}). No incluye los puntajes.</p>
+        <div>
+          <span className="label">Cuentas de solo lectura</span>
+          {isLoading ? <Cargando /> : directivos.length === 0 ? <p className="text-xs text-gray-500">No hay cuentas de solo lectura. Escribe los correos abajo.</p> : (
+            <ul className="space-y-1">
+              {directivos.map((d) => (
+                <li key={d.email}>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={!quitados.has(d.email)}
+                      onChange={() => setQuitados((q) => { const n = new Set(q); if (n.has(d.email)) n.delete(d.email); else n.add(d.email); return n; })} />
+                    <span>{d.nombre}</span><span className="text-xs text-gray-500">{d.email}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <label className="block">
+          <span className="label">Otros correos (separados por coma o espacio)</span>
+          <textarea rows={2} className="input" value={extra} placeholder="direccion@fundacion.cl, otra@fundacion.cl" onChange={(ev) => setExtra(ev.target.value)} />
+          {invalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {invalidos.join(', ')}</span>}
+        </label>
+        <label className="block">
+          <span className="label">Mensaje (opcional)</span>
+          <textarea rows={3} className="input" value={mensaje} maxLength={2000} placeholder="Si lo dejas vacío, va un texto breve estándar." onChange={(ev) => setMensaje(ev.target.value)} />
+        </label>
       </div>
     </Modal>
   );

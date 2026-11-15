@@ -58,6 +58,7 @@ export class AvanceService {
               l.id AS liceo_id, l.codigo AS liceo_codigo, l.nombre AS liceo,
               (p.etapa_id = $1) AS en_esta_etapa,
               r.resultado, COALESCE(r.confirmado, FALSE) AS confirmado, r.confirmado_en, r.avisado_en,
+              (COALESCE(sx.en_espera, FALSE) AND r.resultado IS NULL) AS en_espera,
               COALESCE(en.realizada, FALSE) AS entrevista_realizada,
               en.fecha_hora AS entrevista_fecha, en.comentario AS entrevista_comentario, en.estado AS entrevista_estado,
               COALESCE((SELECT jsonb_agg(jsonb_build_object('etapa_id', x.etapa_id, 'etapa', ex.nombre, 'subido_en', x.subido_en) ORDER BY ex.orden)
@@ -81,6 +82,7 @@ export class AvanceService {
          JOIN liceos l ON l.id = p.liceo_id
          LEFT JOIN resultados_etapa r ON r.postulacion_id = p.id AND r.etapa_id = $1
          LEFT JOIN entrevistas en ON en.postulacion_id = p.id AND en.etapa_id = $1
+         LEFT JOIN seleccion_extra sx ON sx.postulacion_id = p.id AND sx.etapa_id = $1
         WHERE p.etapa_id = $1 OR (r.confirmado AND r.etapa_id = $1)
         ORDER BY p.correlativo`,
       [etapaId]);
@@ -90,7 +92,8 @@ export class AvanceService {
     const activos = estudiantes.filter((x: any) => x.en_esta_etapa && !x.confirmado);
     const resumen = {
       total: estudiantes.length,
-      pendientes_de_decidir: activos.filter((x: any) => !x.resultado).length,
+      // Quien quedó "en espera" en la selección final ya tiene una decisión anotada: no cuenta como pendiente.
+      pendientes_de_decidir: activos.filter((x: any) => !x.resultado && !x.en_espera).length,
       marcados_pasa: activos.filter((x: any) => x.resultado === 'PASA').length,
       marcados_no_pasa: activos.filter((x: any) => x.resultado === 'NO_PASA').length,
       confirmados_pasa: estudiantes.filter((x: any) => x.confirmado && x.resultado === 'PASA').length,
