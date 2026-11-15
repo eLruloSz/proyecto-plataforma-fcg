@@ -40,6 +40,8 @@ export function menuDeEtapa(e: Etapa): ItemMenu[] {
     case 'ENTREVISTA':
       return [
         { a: `/entrevistas/${e.id}`, texto: 'Calendario de entrevistas' },
+        // La última etapa suma la pantalla donde la dirección revisa a los finalistas y decide la beca.
+        ...(e.clave === 'ENTREVISTA_COMITE' ? [{ a: `/seleccion/${e.id}`, texto: 'Selección final' }] : []),
         { a: avance, texto: 'Resultados' },
       ];
     default:

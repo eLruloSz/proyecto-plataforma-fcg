@@ -229,17 +229,22 @@ export class EntrevistasService {
   // Pauta completada: el Word de la entrevista, ya rellenado, se sube al estudiante
   // -------------------------------------------------------------------------
 
-  /** Estudiante de la etapa (misma regla de pertenencia que el calendario). */
+  /**
+   * Estudiante que puede tener pauta en esta etapa: está en ella, ya pasó por ella (la ficha de Selección final
+   * sube la pauta de la entrevista anterior) o tiene entrevista o pauta registrada ahí.
+   */
   private async estudianteDeEtapa(etapaId: string, postulacionId: string) {
     const [p] = await this.ds.query(
       `SELECT p.id, p.codigo, pe.nombres, pe.apellido_paterno,
               (p.etapa_id = $2) AS en_esta_etapa,
-              EXISTS (SELECT 1 FROM entrevistas e WHERE e.postulacion_id = p.id AND e.etapa_id = $2) AS tiene
+              COALESCE((SELECT x.orden <= ea.orden FROM etapas x, etapas ea WHERE x.id = $2 AND ea.id = p.etapa_id), FALSE) AS ya_paso,
+              EXISTS (SELECT 1 FROM entrevistas e WHERE e.postulacion_id = p.id AND e.etapa_id = $2) AS tiene,
+              EXISTS (SELECT 1 FROM pautas_entrevista pt WHERE pt.postulacion_id = p.id AND pt.etapa_id = $2) AS tiene_pauta
          FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id
         WHERE p.id = $1 AND p.proceso_id = $3`,
       [postulacionId, etapaId, await this.proceso.id()]);
     if (!p) throw new NotFoundException('Estudiante no encontrado.');
-    if (!p.en_esta_etapa && !p.tiene) throw new ConflictException('El estudiante no está en esta etapa.');
+    if (!p.en_esta_etapa && !p.ya_paso && !p.tiene && !p.tiene_pauta) throw new ConflictException('El estudiante no está en esta etapa.');
     return p as { id: string; codigo: string; nombres: string; apellido_paterno: string };
   }
 
