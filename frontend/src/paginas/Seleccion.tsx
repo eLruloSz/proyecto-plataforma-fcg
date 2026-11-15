@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, FichaPostulacion } from '../api';
 import { useEtapa } from '../etapa';
+import { subirPautaCompletada } from '../pautas';
 import { useSesion } from '../sesion';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nombreCompleto, nota, useAviso, Vacio } from '../ui';
 import { ESTADOS } from './Entrevistas';
@@ -207,7 +208,15 @@ function TarjetaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
   f: Finalista; soloLectura: boolean; ocupado: boolean; onAbrir: () => void; onMarcar: (r: Resultado) => void;
 }) {
   const ap = apreciacionActual(f);
+  const avisar = useAviso();
   const conPauta = f.entrevistas.filter((e) => e.pauta).length;
+  /** Una sola pauta: se descarga directo. Si hay más de una (etapas 4 y 5), se abre la ficha para elegir. */
+  const abrirPauta = async () => {
+    const e = f.entrevistas.find((x) => x.pauta);
+    if (conPauta !== 1 || !e) return onAbrir();
+    try { await api.descargar(`/entrevistas/${e.etapa_id}/estudiantes/${f.id}/pauta-completada`, e.pauta?.nombre ?? `Pauta ${f.codigo}.docx`); }
+    catch (err) { avisar((err as Error).message, 'error'); }
+  };
   return (
     <div className={`tarjeta flex flex-wrap items-center gap-x-4 gap-y-2 p-3 ${f.resultado === 'PASA' ? 'border-green-300' : f.resultado === 'NO_PASA' ? 'border-red-200 bg-red-50/30' : ''}`}>
       <div className="w-10 text-center" title="Posición en el ranking">
@@ -222,7 +231,12 @@ function TarjetaFinalista({ f, soloLectura, ocupado, onAbrir, onMarcar }: {
         {f.ficha && (f.ficha.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : f.ficha.tramo_rsh !== null && <Etiqueta>RSH {f.ficha.tramo_rsh}%</Etiqueta>)}
         {ap ? <span className={`rounded border px-1.5 py-0.5 ${APRECIACIONES[ap].chip}`}>{APRECIACIONES[ap].texto}</span>
           : <span className="text-gray-400">sin apreciación</span>}
-        {conPauta > 0 && <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-800" title="Word de la pauta completada">📄 Pauta{conPauta > 1 ? ` ×${conPauta}` : ''}</span>}
+        {conPauta > 0 && (
+          <button className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-800 hover:bg-blue-100" onClick={abrirPauta}
+            title={conPauta === 1 ? 'Descargar el Word de la pauta completada' : 'Ver las pautas completadas en la ficha'}>
+            📄 Pauta{conPauta > 1 ? ` ×${conPauta}` : ''}
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-1.5">
         {f.confirmado ? (
@@ -304,11 +318,19 @@ function BloqueEntrevista({ f, e, soloLectura, onCambio }: { f: Finalista; e: En
   const [apreciacion, setApreciacion] = useState<Apreciacion | null>(e.apreciacion);
   const [observaciones, setObservaciones] = useState(e.observaciones ?? '');
   const [bajando, setBajando] = useState(false);
-  const cambio = apreciacion !== e.apreciacion || observaciones.trim() !== (e.observaciones ?? '');
+  const [subiendo, setSubiendo] = useState(false);
+  const entrada = useRef<HTMLInputElement>(null);
+  const cambio = observaciones.trim() !== (e.observaciones ?? '');
 
-  const guardar = useMutation({
-    mutationFn: () => api.put(`/seleccion/entrevistas/${e.etapa_id}/estudiantes/${f.id}/apreciacion`, { apreciacion, observaciones: observaciones.trim() || null }),
+  // La apreciación se guarda en cuanto se elige (un clic); el botón «Guardar» es solo para las observaciones.
+  const guardarApreciacion = useMutation({
+    mutationFn: (a: Apreciacion | null) => api.put(`/seleccion/entrevistas/${e.etapa_id}/estudiantes/${f.id}/apreciacion`, { apreciacion: a }),
     onSuccess: () => { avisar('Apreciación guardada'); onCambio(); },
+    onError: (err: Error) => { setApreciacion(e.apreciacion); avisar(err.message, 'error'); },
+  });
+  const guardar = useMutation({
+    mutationFn: () => api.put(`/seleccion/entrevistas/${e.etapa_id}/estudiantes/${f.id}/apreciacion`, { observaciones: observaciones.trim() || null }),
+    onSuccess: () => { avisar('Observaciones guardadas'); onCambio(); },
     onError: (err: Error) => avisar(err.message, 'error'),
   });
   const bajar = async () => {
@@ -318,16 +340,33 @@ function BloqueEntrevista({ f, e, soloLectura, onCambio }: { f: Finalista; e: En
     finally { setBajando(false); }
   };
 
+  const subir = async (archivo: File) => {
+    setSubiendo(true);
+    try {
+      const r = await subirPautaCompletada(e.etapa_id, f.id, archivo);
+      if (r) { avisar(r.reemplazada ? 'Pauta reemplazada' : 'Pauta guardada'); onCambio(); }
+    } catch (err) { avisar((err as Error).message, 'error'); }
+    finally { setSubiendo(false); }
+  };
+
   return (
     <div className="rounded-lg border border-gray-200 p-3">
+      <input ref={entrada} type="file" hidden accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onChange={(ev) => { const a = ev.target.files?.[0]; ev.target.value = ''; if (a) subir(a); }} />
       <div className="flex flex-wrap items-center gap-2">
         <strong>{e.etapa}</strong>
         {e.estado && <span className={`rounded border px-1.5 py-0.5 text-xs ${ESTADOS[e.estado].chip}`}>{ESTADOS[e.estado].texto}</span>}
         {e.fecha_hora && <span className="text-xs text-gray-500">{fecha(e.fecha_hora)}</span>}
-        <span className="ml-auto">
+        <span className="ml-auto flex flex-wrap items-center gap-1.5">
           {e.pauta
             ? <button className="btn-word btn-chico" disabled={bajando} onClick={bajar} title={`Subida el ${fecha(e.pauta.subido_en)}`}>{bajando ? 'Preparando…' : '⬇ Pauta completada (Word)'}</button>
-            : <span className="text-xs text-gray-400" title="Se sube desde el Calendario de entrevistas">Sin pauta completada</span>}
+            : <span className="text-xs text-gray-400">Sin pauta completada</span>}
+          {!soloLectura && (
+            <button className="btn-secundario btn-chico" disabled={subiendo} onClick={() => entrada.current?.click()}
+              title="Sube el Word de la pauta ya rellenado después de la entrevista">
+              {subiendo ? 'Subiendo…' : e.pauta ? '⬆ Reemplazar' : '⬆ Subir Word completado'}
+            </button>
+          )}
         </span>
       </div>
       {e.comentario && <p className="mt-2 text-xs text-gray-600"><span className="text-gray-400">Nota de la agenda:</span> {e.comentario}</p>}
@@ -336,7 +375,8 @@ function BloqueEntrevista({ f, e, soloLectura, onCambio }: { f: Finalista; e: En
         <span className="label">Apreciación general</span>
         <div className="flex flex-wrap gap-1.5">
           {ORDEN_APRECIACION.map((a) => (
-            <button key={a} disabled={soloLectura} aria-pressed={apreciacion === a} onClick={() => setApreciacion(apreciacion === a ? null : a)}
+            <button key={a} disabled={soloLectura || guardarApreciacion.isPending} aria-pressed={apreciacion === a}
+              onClick={() => { const nueva = apreciacion === a ? null : a; setApreciacion(nueva); guardarApreciacion.mutate(nueva); }}
               className={`rounded-md border px-2.5 py-1.5 text-xs ${apreciacion === a ? `${APRECIACIONES[a].activo} font-semibold` : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:hover:bg-white'}`}>
               {APRECIACIONES[a].texto}
             </button>
@@ -351,7 +391,8 @@ function BloqueEntrevista({ f, e, soloLectura, onCambio }: { f: Finalista; e: En
       {!soloLectura && (
         <div className="mt-2 flex items-center justify-end gap-2">
           {e.apreciacion_en && <span className="mr-auto text-[11px] text-gray-400">Última modificación: {fecha(e.apreciacion_en)}</span>}
-          <button className="btn-primario btn-chico" disabled={!cambio || guardar.isPending} onClick={() => guardar.mutate()}>Guardar</button>
+          {cambio && <span className="text-[11px] text-amber-700">Observaciones sin guardar</span>}
+          <button className="btn-primario btn-chico" disabled={!cambio || guardar.isPending} onClick={() => guardar.mutate()}>Guardar observaciones</button>
         </div>
       )}
     </div>
