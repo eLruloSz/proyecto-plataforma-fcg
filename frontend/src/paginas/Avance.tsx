@@ -324,7 +324,10 @@ export function Avance() {
             title={encuentros?.length ? 'Asignar una fecha a varios estudiantes de una vez' : 'Primero agrega fechas'}>Inscribir en una fecha</button>
         )}
         {esPre && (
+          <>
           <button className="btn-secundario" onClick={() => setSubiendoRanking(true)}>{ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
+          <Link className="btn-secundario" to="/cartolas" title="Sube las cartolas RSH en PDF: el sistema llena la ficha y descarta el archivo">Cargar cartolas RSH (PDF)</Link>
+          </>
         )}
         {esEntrevista && <Link className="btn-secundario" to={`/entrevistas/${e.id}`}>Calendario de entrevistas</Link>}
         <button className="btn-secundario" onClick={() => setViendoRequisitos(true)}>Requisitos ({requisitos.length})</button>

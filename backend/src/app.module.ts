@@ -21,6 +21,7 @@ import { GeneracionesModule } from './generaciones/generaciones.module';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { ExportacionModule } from './exportacion/exportacion.module';
 import { SeleccionModule } from './seleccion/seleccion.module';
+import { CartolasModule } from './cartolas/cartolas.module';
 
 /**
  * TLS hacia PostgreSQL. Se valida siempre el certificado del servidor
@@ -64,6 +65,7 @@ function opcionesSsl(cfg: ConfigService) {
     UsuariosModule,
     ExportacionModule,
     SeleccionModule,
+    CartolasModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

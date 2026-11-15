@@ -38,6 +38,8 @@ services:
       - ./db/13_plantilla_invitacion_lista.sql:/docker-entrypoint-initdb.d/13_plantilla_invitacion_lista.sql:ro
       - ./db/14_plantillas_anexo_2026.sql:/docker-entrypoint-initdb.d/14_plantillas_anexo_2026.sql:ro
       - ./db/15_hitos_flujo_2026.sql:/docker-entrypoint-initdb.d/15_hitos_flujo_2026.sql:ro
+      - ./db/16_apreciacion_entrevista.sql:/docker-entrypoint-initdb.d/16_apreciacion_entrevista.sql:ro
+      - ./db/17_cartolas_leidas.sql:/docker-entrypoint-initdb.d/17_cartolas_leidas.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s

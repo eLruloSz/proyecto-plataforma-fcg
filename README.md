@@ -62,6 +62,8 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `13_plantilla_invitacion_lista.sql` | Plantilla «Invitación a postular (listado para la contraparte)»: solo los nombres de los invitados + enlace al formulario |
 | `14_plantillas_anexo_2026.sql` | Etapa de cada plantilla y los 18 correos reales del proceso 2026 (contrapartes, directivos y postulantes) |
 | `15_hitos_flujo_2026.sql` | Seguimiento por liceo según el flujo actual: hitos por etapa, casi todos automáticos, 2 calculados (respuestas de invitados, entrevista final) |
+| `16_apreciacion_entrevista.sql` | Apreciación de la entrevista (aceptaría / con dudas / no aceptaría) y observaciones, para la selección final |
+| `17_cartolas_leidas.sql` | Huella (hash) y fecha de emisión de cada cartola RSH leída; el PDF no se guarda |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
@@ -119,6 +121,16 @@ ofrece pasar a la siguiente.
    - Documentos recibidos.
    - Ficha RSH: datos de la cartola, con alertas de tramo y de diferencia de personas
      del hogar. La cartola no se guarda.
+   - **Cargar cartolas RSH (PDF)** (botón en *Resultados* de Preselección N°1; solo equipo): se suben una o
+     varias cartolas, el servidor las lee **en memoria** (`pdftotext`), muestra lo que encontró (tramo,
+     personas del hogar, menores, mayores, ingreso, etc.) junto a lo que ya había en la ficha, y al confirmar
+     lo guarda con el mismo `PUT /postulaciones/:id/ficha`. **El PDF no se guarda** y de los demás integrantes
+     no queda nada (sus nombres se usan solo para reconocer al estudiante). La cartola trae el RUT tapado
+     (`4.553.XXX-X`), así que el estudiante se reconoce por nombre completo (o por el RUT del nombre del
+     archivo, si el RUT está cargado); si no calza o es aproximado, se confirma o se asigna a mano. De cada
+     cartola queda solo su huella (hash) y fecha de emisión (migración 17), para no cargarla dos veces.
+     Código en `backend/src/cartolas/`; **las etiquetas y patrones del formato están en `cartola-formato.ts`**
+     (el único archivo a ajustar con una cartola real). Ejemplo inventado en `db/cartolas-demo/`.
    - Subir el Excel del ranking y marcar quién avanza según el ranking.
 5. **Etapas 4 y 5 · Entrevistas** (Preselección N°2 y Selección de becarios).
    - Calendario semanal con los mismos estados y colores de la planilla de la fundación,
@@ -184,6 +196,8 @@ API=http://localhost:8080/api node test/flujo-generaciones.mjs       # al final:
 
 ## Pendiente
 
+- **Cartolas RSH:** definir con la fundación el consentimiento de las familias y la retención de las cartolas
+  que llegan por correo; probar con más cartolas reales (hogares con más integrantes) por si el diseño varía.
 - **Página de Selección de becarios** (la última etapa): comparar a los entrevistados, guardar
   la apreciación general de la entrevista (aceptaría / con dudas / no aceptaría), el cupo y
   la decisión del Comité.
