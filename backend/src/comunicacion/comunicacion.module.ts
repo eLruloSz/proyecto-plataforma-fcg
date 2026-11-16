@@ -6,7 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested,
+  ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { timingSafeEqual } from 'crypto';
@@ -18,7 +18,7 @@ import { VARIABLES } from './variables';
 import { ArchivosService, TAMANO_MAXIMO } from '../common/archivos.service';
 import { Publico, Usuario, UsuarioSesion } from '../auth/public.decorator';
 
-const PROPOSITOS = ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AVISO_RESULTADO', 'AGRADECIMIENTO', 'INFORME_LICEO', 'OTRO'];
+const PROPOSITOS = ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AVISO_RESULTADO', 'AGRADECIMIENTO', 'INFORME_LICEO', 'INFORME_DIRECTIVOS', 'OTRO'];
 
 class PlantillaDto {
   @IsString() @MinLength(1) @MaxLength(200) nombre: string;
@@ -40,7 +40,7 @@ class FiltroEtapaDto {
   @IsOptional() @IsBoolean() soloSinAviso?: boolean;
 }
 class EnvioDto {
-  @IsIn(['CONTRAPARTES', 'DIRECTORES', 'LICEO', 'POSTULANTES']) grupo: 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
+  @IsIn(['CONTRAPARTES', 'DIRECTORES', 'LICEO', 'POSTULANTES', 'DIRECTIVOS']) grupo: 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES' | 'DIRECTIVOS';
   @IsOptional() @IsIn(PROPOSITOS) proposito?: string;
   @IsString() @MinLength(1) @MaxLength(300) asunto: string;
   @IsString() @MinLength(1) @MaxLength(50000) cuerpo: string;
@@ -48,6 +48,7 @@ class EnvioDto {
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsUUID('all', { each: true }) adjuntoIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) liceoIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) postulacionIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsEmail({}, { each: true }) correosExtra?: string[];
   @IsOptional() @IsUUID() envioOrigenId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) excluir?: string[];
   @IsOptional() @ValidateNested() @Type(() => FiltroEtapaDto) filtroEtapa?: FiltroEtapaDto;

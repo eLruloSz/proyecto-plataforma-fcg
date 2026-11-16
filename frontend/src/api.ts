@@ -163,7 +163,7 @@ export interface PreviaFormulario {
   filas: FilaFormulario[];
 }
 export interface Encuentro { id: string; fecha: string; enlace: string | null; inscritos: number; asistentes: number; ausentes: number }
-export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
+export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES' | 'DIRECTIVOS';
 export interface Plantilla {
   id: string; nombre: string; proposito: string; asunto: string; cuerpo: string;
   /** Etapa (orden) a la que pertenece; null = cualquier etapa. */
@@ -196,6 +196,8 @@ export interface FiltroEtapa { etapaId: string; tipo: TipoFiltroEtapa; soloSinAv
 export interface SolicitudEnvio {
   grupo: Grupo; proposito?: string; asunto: string; cuerpo: string; plantillaId?: string; adjuntoIds?: string[];
   liceoIds?: string[]; postulacionIds?: string[]; envioOrigenId?: string; excluir?: string[]; filtroEtapa?: FiltroEtapa;
+  /** DIRECTIVOS: correos escritos a mano, además de las cuentas de solo lectura. */
+  correosExtra?: string[];
 }
 export interface Dashboard {
   proceso: { id: string; nombre: string; anio: number };
@@ -361,6 +363,7 @@ export const PROPOSITOS: Record<string, string> = {
   AVISO_RESULTADO: 'Aviso de resultado',
   AGRADECIMIENTO: 'Agradecimiento',
   INFORME_LICEO: 'Informe de estudiantes al liceo',
+  INFORME_DIRECTIVOS: 'Informe a los directivos',
   OTRO: 'Otro',
 };
 export const GRUPOS: Record<Grupo, string> = {
@@ -368,4 +371,5 @@ export const GRUPOS: Record<Grupo, string> = {
   DIRECTORES: 'Todos los directores',
   LICEO: 'Liceos específicos',
   POSTULANTES: 'Estudiantes invitados',
+  DIRECTIVOS: 'Directivos de la fundación',
 };

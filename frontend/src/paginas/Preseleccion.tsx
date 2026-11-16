@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, CargaRanking, FichaPostulacion, PreviaRanking, VistaAvance } from '../api';
-import { Caja, Etiqueta, fecha, Modal, useAviso } from '../ui';
+import { Caja, Etiqueta, fecha, Icono, Modal, useAviso } from '../ui';
 
 type Fila = VistaAvance['estudiantes'][number];
 
@@ -110,11 +110,13 @@ export function alertasFicha(f: FichaPostulacion | null): { tono: 'amarillo' | '
 }
 
 /** Celda de la tabla de la etapa: datos del hogar y alertas, con botón para abrir la ficha. */
-export function CeldaFicha({ f, onAbrir }: { f: Fila; onAbrir: () => void }) {
+/** `onCargar`: si el estudiante aún no tiene ficha, «completar ficha» lleva a Cartolas RSH con él ya elegido. */
+export function CeldaFicha({ f, onAbrir, onCargar }: { f: Fila; onAbrir: () => void; onCargar?: () => void }) {
   const alertas = alertasFicha(f.ficha);
   const apoyo = f.ficha ? (f.ficha.con_discapacidad ?? 0) + (f.ficha.con_dependencia ?? 0) + (f.ficha.con_invalidez ?? 0) + (f.ficha.con_nee ?? 0) : 0;
   return (
-    <button onClick={onAbrir} className="w-full min-w-[150px] rounded-md px-1 py-0.5 text-left hover:bg-gray-100" title="Ver o editar la ficha de postulación">
+    <button onClick={!f.ficha && onCargar ? onCargar : onAbrir} className="w-full min-w-[150px] rounded-md px-1 py-0.5 text-left hover:bg-gray-100"
+      title={!f.ficha && onCargar ? 'Cargar el RSH de este estudiante (cartola o a mano)' : 'Ver o editar la ficha de postulación'}>
       {!f.ficha ? <span className="text-xs text-gray-400 underline">completar ficha</span> : (
         <div className="space-y-0.5 text-xs">
           <div className="text-gray-800">
@@ -299,8 +301,8 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
             Si el archivo tiene varias pestañas de ponderación, después eliges cuál cargar.</p>
           <input ref={input} type="file" accept=".xlsx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) { setArchivo(f); leer.mutate({ f }); } }} />
-          <button className="btn-primario" disabled={leer.isPending} onClick={() => input.current?.click()}>
-            {leer.isPending ? 'Leyendo archivo…' : 'Elegir Excel del ranking'}
+          <button className="btn-excel" disabled={leer.isPending} onClick={() => input.current?.click()}>
+            {leer.isPending ? 'Leyendo archivo…' : <><Icono tipo="carpeta" /> Elegir Excel del ranking</>}
           </button>
         </div>
       </Modal>

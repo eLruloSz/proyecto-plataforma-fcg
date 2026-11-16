@@ -8,7 +8,7 @@ import { MailerService, limpiarMessageId } from './mailer.service';
 import { asuntoVisible, reemplazarVariables, variablesDesconocidas } from './variables';
 import { filas } from '../common/sql';
 
-export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES';
+export type Grupo = 'CONTRAPARTES' | 'DIRECTORES' | 'LICEO' | 'POSTULANTES' | 'DIRECTIVOS';
 
 export interface SolicitudEnvio {
   grupo: Grupo;
@@ -21,6 +21,8 @@ export interface SolicitudEnvio {
   liceoIds?: string[];
   /** POSTULANTES: estudiantes elegidos (si no viene, todos los invitados con email). */
   postulacionIds?: string[];
+  /** DIRECTIVOS: correos escritos a mano, además de las cuentas de solo lectura de la plataforma. */
+  correosExtra?: string[];
   /** Reenviar solo a quienes no respondieron un envío anterior. */
   envioOrigenId?: string;
   /** Destinatarios que el usuario quitó de la lista antes de enviar (ids de liceo o postulación). */
@@ -137,6 +139,8 @@ export class EnviosService {
       return { grupo, destinatarios, excluidos };
     }
 
+    if (grupo === 'DIRECTIVOS') return { grupo, ...(await this.resolverDirectivos(s, quitar)) };
+
     if (grupo === 'LICEO' && !liceoIds?.length) throw new BadRequestException('Elige al menos un liceo.');
     const tipo = grupo === 'DIRECTORES' ? 'DIRECTOR' : 'CONTRAPARTE';
     const filasL = await this.ds.query(
@@ -160,6 +164,33 @@ export class EnviosService {
       else destinatarios.push({ ...base, liceoId: r.id, postulacionId: null, cargo: r.cargo, email: r.email });
     }
     return { grupo, destinatarios, excluidos };
+  }
+
+  /** Directivos de la fundación: las cuentas de solo lectura activas y los correos escritos a mano. */
+  private async resolverDirectivos(s: SolicitudEnvio, quitar: Set<string>) {
+    if (s.envioOrigenId) throw new BadRequestException('Los correos a los directivos no se reenvían: crea uno nuevo.');
+    const destinatarios: Destinatario[] = [];
+    const excluidos: Excluido[] = [];
+    const liceo = 'Directivos de la fundación';
+    const vistos = new Set<string>();
+    const cuentas = await this.ds.query(
+      `SELECT id, nombre_completo, email FROM usuarios WHERE rol = 'LECTOR' AND activo ORDER BY nombre_completo`);
+    for (const u of cuentas) {
+      const base = { clave: u.id as string, nombre: u.nombre_completo as string, liceo };
+      if (!u.email) excluidos.push({ ...base, motivo: 'Sin email registrado' });
+      else if (quitar.has(u.id)) excluidos.push({ ...base, motivo: 'Quitado de la lista' });
+      else {
+        vistos.add(String(u.email).toLowerCase());
+        destinatarios.push({ ...base, liceoId: null, postulacionId: null, cargo: null, email: u.email });
+      }
+    }
+    for (const correo of [...new Set((s.correosExtra ?? []).map((c) => c.trim().toLowerCase()).filter(Boolean))]) {
+      if (vistos.has(correo)) continue;
+      const base = { clave: `extra:${correo}`, nombre: 'directivo/a', liceo };
+      if (quitar.has(base.clave)) excluidos.push({ ...base, nombre: correo, motivo: 'Quitado de la lista' });
+      else destinatarios.push({ ...base, liceoId: null, postulacionId: null, cargo: null, email: correo });
+    }
+    return { destinatarios, excluidos };
   }
 
   private async idsPorEtapa(f: FiltroEtapa, procesoId: string): Promise<string[]> {
@@ -235,7 +266,7 @@ export class EnviosService {
 
   /** Agrega {{estudiantes}} y {{lista_estudiantes}} a cada destinatario-liceo si la plantilla los usa. */
   private async completarEstudiantes(s: SolicitudEnvio, grupo: Grupo, destinatarios: Destinatario[], procesoId: string) {
-    if (grupo === 'POSTULANTES' || !/\{\{\s*(lista_)?estudiantes\s*\}\}/i.test(s.asunto + s.cuerpo)) return;
+    if (grupo === 'POSTULANTES' || grupo === 'DIRECTIVOS' || !/\{\{\s*(lista_)?estudiantes\s*\}\}/i.test(s.asunto + s.cuerpo)) return;
     const { detalle, lista } = await this.estudiantesPorLiceo(destinatarios.map((d) => d.liceoId!).filter(Boolean), procesoId);
     for (const d of destinatarios) {
       d.estudiantes = detalle.get(d.liceoId!) ?? '';
@@ -336,9 +367,11 @@ export class EnviosService {
       for (const d of destinatarios) {
         const r = this.renderizar(d, s, comunes);
         await em.query(
-          `INSERT INTO envio_destinatarios (envio_id, liceo_id, postulacion_id, nombre, email, asunto_final, cuerpo_final)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [envio.id, d.liceoId, d.postulacionId, d.nombre, d.email, r.asunto.slice(0, 300), r.cuerpo],
+          // Un correo informativo a los directivos no espera respuesta: no queda como "sin respuesta" en el inicio.
+          `INSERT INTO envio_destinatarios (envio_id, liceo_id, postulacion_id, nombre, email, asunto_final, cuerpo_final, respuesta, respuesta_auto)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [envio.id, d.liceoId, d.postulacionId, d.nombre, d.email, r.asunto.slice(0, 300), r.cuerpo,
+            grupo === 'DIRECTIVOS' ? 'RESPONDIDO' : 'PENDIENTE', grupo === 'DIRECTIVOS'],
         );
       }
       // Aviso de resultado: queda registrado a quiénes ya se les avisó.

@@ -18,7 +18,10 @@ export function tipoEtapa(e: Pick<Etapa, 'clave' | 'orden'>): TipoEtapa {
   return 'GENERAL';
 }
 
-export interface ItemMenu { a: string; texto: string }
+/** Nombre corto de una etapa de entrevista para botones: "Preselección N°2" → "Preselección", "Selección de becarios" → "Selección". */
+export const etiquetaEntrevista = (nombre: string) => nombre.replace(/^Preselección.*/i, 'Preselección').replace(/^Selección.*/i, 'Selección');
+
+export interface ItemMenu { a: string; texto: string; /** Solo lo ve el equipo (no las cuentas de solo lectura). */ soloEquipo?: boolean }
 
 /**
  * Lo que se trabaja en cada etapa (el menú muestra solo esto, además de Inicio, Comunicación y
@@ -36,7 +39,10 @@ export function menuDeEtapa(e: Etapa): ItemMenu[] {
     case 'ENCUENTRO':
       return [{ a: avance, texto: 'Encuentro online' }];
     case 'PRESELECCION':
-      return [{ a: avance, texto: 'Postulantes y ranking' }];
+      return [
+        { a: '/cartolas', texto: 'Cartolas RSH', soloEquipo: true },
+        { a: avance, texto: 'Postulantes y ranking' },
+      ];
     case 'ENTREVISTA':
       return [
         { a: `/entrevistas/${e.id}`, texto: 'Calendario de entrevistas' },
@@ -54,7 +60,7 @@ export const PROPOSITOS_DE_ETAPA: Record<TipoEtapa, string[]> = {
   INVITACION: ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AGRADECIMIENTO'],
   ENCUENTRO: ['OTRO', 'AVISO_RESULTADO'],
   PRESELECCION: ['OTRO', 'AVISO_RESULTADO', 'INFORME_LICEO'],
-  ENTREVISTA: ['AVISO_RESULTADO', 'INFORME_LICEO', 'OTRO'],
+  ENTREVISTA: ['AVISO_RESULTADO', 'INFORME_DIRECTIVOS', 'INFORME_LICEO', 'OTRO'],
   GENERAL: ['AVISO_RESULTADO', 'OTRO'],
 };
 

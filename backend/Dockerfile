@@ -8,6 +8,8 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Lector de PDF de las cartolas del RSH (pdftotext). Se lee en memoria; no se guarda ningún archivo.
+RUN apk add --no-cache poppler-utils
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist

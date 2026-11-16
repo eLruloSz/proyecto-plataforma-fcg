@@ -5,7 +5,7 @@ import { api, BloqueoAgenda, CalendarioEntrevistas, EstadoEntrevista, Estudiante
 import { useProceso } from '../Layout';
 import { DescargarPautas } from './DescargarPautas';
 import { useEtapa } from '../etapa';
-import { Caja, Cargando, ErrorCarga, fecha, Modal, useAviso, Vacio } from '../ui';
+import { Caja, Cargando, ErrorCarga, fecha, Icono, Modal, useAviso, Vacio } from '../ui';
 
 /** Mismos estados y colores que la planilla de la fundación. */
 export const ESTADOS: Record<EstadoEntrevista, { texto: string; chip: string; punto: string }> = {
@@ -116,7 +116,7 @@ export function Entrevistas() {
           <p className="text-sm text-gray-500">Haz clic en un bloque libre para agendar, o en una entrevista para cambiar su estado, moverla o comentar.</p>
         </div>
         <button className="btn-word" onClick={() => setVerPautas(true)}
-          title="Elegir de qué estudiantes descargar la pauta de entrevista en Word">⬇ Descargar Word</button>
+          title="Elegir de qué estudiantes descargar la pauta de entrevista en Word"><Icono tipo="bajar" /> Descargar Word</button>
       </div>
       {verPautas && (
         <DescargarPautas etapaId={data.etapa.id} etapaNombre={data.etapa.nombre} bajadas={pautasBajadas}
@@ -270,7 +270,7 @@ function BotonDescarga({ ruta, nombre, texto, titulo }: { ruta: string; nombre: 
     catch (e) { avisar((e as Error).message, 'error'); }
     finally { setBajando(false); }
   };
-  return <button className="btn-word btn-chico" disabled={bajando} onClick={bajar} title={titulo}>{bajando ? 'Preparando…' : `⬇ ${texto}`}</button>;
+  return <button className="btn-word btn-chico" disabled={bajando} onClick={bajar} title={titulo}>{bajando ? 'Preparando…' : <><Icono tipo="bajar" /> {texto}</>}</button>;
 }
 
 function EditarEntrevista({ calendario, estudiante: e, diaInicial, horaInicial, onCerrar }: {

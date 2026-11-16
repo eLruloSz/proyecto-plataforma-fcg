@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Contacto, Invitado, Liceo, ModoSugerencia, Nomina, Participacion, Previsualizacion } from '../api';
-import { Caja, Cargando, Etiqueta, ErrorCarga, EstadoEnProceso, fecha, Modal, nota, useAviso, Vacio } from '../ui';
+import { Caja, Cargando, Etiqueta, ErrorCarga, EstadoEnProceso, fecha, Icono, Modal, nota, useAviso, Vacio } from '../ui';
 
 // ---------------------------------------------------------------------------
 // Contactos
@@ -97,8 +97,8 @@ function SubirNomina({ liceo, hayNomina }: { liceo: Liceo; hayNomina: boolean })
         const f = e.target.files?.[0];
         if (f) { setArchivo(f); previsualizar.mutate(f); }
       }} />
-      <button className={hayNomina ? 'btn-secundario' : 'btn-primario'} disabled={previsualizar.isPending} onClick={() => input.current?.click()}>
-        {previsualizar.isPending ? 'Leyendo archivo…' : hayNomina ? 'Reemplazar nómina' : 'Subir nómina (Excel)'}
+      <button className={hayNomina ? 'btn-excel-suave' : 'btn-excel'} disabled={previsualizar.isPending} onClick={() => input.current?.click()}>
+        {previsualizar.isPending ? 'Leyendo archivo…' : <><Icono tipo="carpeta" /> {hayNomina ? 'Reemplazar nómina' : 'Subir nómina (Excel)'}</>}
       </button>
 
       {previa && (

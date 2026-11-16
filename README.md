@@ -62,6 +62,16 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `13_plantilla_invitacion_lista.sql` | Plantilla «Invitación a postular (listado para la contraparte)»: solo los nombres de los invitados + enlace al formulario |
 | `14_plantillas_anexo_2026.sql` | Etapa de cada plantilla y los 18 correos reales del proceso 2026 (contrapartes, directivos y postulantes) |
 | `15_hitos_flujo_2026.sql` | Seguimiento por liceo según el flujo actual: hitos por etapa, casi todos automáticos, 2 calculados (respuestas de invitados, entrevista final) |
+| `16_apreciacion_entrevista.sql` | Apreciación de la entrevista (aceptaría / con dudas / no aceptaría) y observaciones, para la selección final |
+| `17_cartolas_leidas.sql` | Huella (hash) y fecha de emisión de cada cartola RSH leída; el PDF no se guarda |
+| `18_seleccion_espera_notas.sql` | Lista de espera y notas del comité de la selección final |
+| `19_envios_directivos.sql` | Correos a los directivos de la fundación (grupo nuevo) y su plantilla |
+
+**Al actualizar desde una versión anterior** (base de datos ya creada): Docker solo ejecuta estas migraciones en una
+base nueva. Si ya tenías la base, corre a mano las que falten (por ejemplo 17, 18 y 19), una por una:
+`Get-Content db\17_cartolas_leidas.sql -Raw | docker exec -i becas-db psql -U becas -d becas`.
+Y reconstruye el backend (`docker compose up -d --build backend`): su imagen ahora instala `poppler-utils`
+(el lector de PDF de las cartolas).
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
@@ -119,6 +129,19 @@ ofrece pasar a la siguiente.
    - Documentos recibidos.
    - Ficha RSH: datos de la cartola, con alertas de tramo y de diferencia de personas
      del hogar. La cartola no se guarda.
+   - **Cartolas RSH** (pestaña en el menú de Preselección N°1; solo equipo): lista de estudiantes con el estado de
+     su cartola y botón *Cargar* por estudiante (PDF o digitado a mano, con vista previa y comparación del nombre
+     del sistema con el de la cartola; «completar ficha» en Resultados lleva ahí con el estudiante elegido).
+     *Carga masiva* (`/cartolas/masiva`): se suben una o
+     varias cartolas, el servidor las lee **en memoria** (`pdftotext`), muestra lo que encontró (tramo,
+     personas del hogar, menores, mayores, ingreso, etc.) junto a lo que ya había en la ficha, y al confirmar
+     lo guarda con el mismo `PUT /postulaciones/:id/ficha`. **El PDF no se guarda** y de los demás integrantes
+     no queda nada (sus nombres se usan solo para reconocer al estudiante). La cartola trae el RUT tapado
+     (`4.553.XXX-X`), así que el estudiante se reconoce por nombre completo (o por el RUT del nombre del
+     archivo, si el RUT está cargado); si no calza o es aproximado, se confirma o se asigna a mano. De cada
+     cartola queda solo su huella (hash) y fecha de emisión (migración 17), para no cargarla dos veces.
+     Código en `backend/src/cartolas/`; **las etiquetas y patrones del formato están en `cartola-formato.ts`**
+     (el único archivo a ajustar con una cartola real). Ejemplo inventado en `db/cartolas-demo/`.
    - Subir el Excel del ranking y marcar quién avanza según el ranking.
 5. **Etapas 4 y 5 · Entrevistas** (Preselección N°2 y Selección de becarios).
    - Calendario semanal con los mismos estados y colores de la planilla de la fundación,
@@ -127,6 +150,17 @@ ofrece pasar a la siguiente.
      un comentario, con filtro «Sin entrevistar». Estos campos nunca se bloquean.
    - **Descargar Word:** la pauta de entrevista de la fundación, rellenada con los datos
      del estudiante (ver *Exportar y descargar*).
+   - **Selección final** (etapa 5): cada finalista con todo lo que se sabe de él o ella, para decidir
+     quién recibe la beca. La decisión tiene tres opciones: *Seleccionar*, *En espera* y *No seleccionar*
+     (la lista de espera sigue el ranking). Incluye barra de cupo, **Comparar** de 2 a 3 finalistas lado a
+     lado (verde = mejor desempeño; subrayado = mayor necesidad), ficha amplia navegable con las flechas
+     (datos y situación familiar a la izquierda, entrevistas a la derecha), *Notas del comité* y
+     **Exportar a Excel** (solo lo importante, sin puntajes).
+   - **Enviar a los directivos:** abre *Comunicación* con el Excel adjunto y la plantilla «Resumen de la
+     selección final para la dirección». Le llega a las cuentas de solo lectura (más los correos que se
+     agreguen a mano) y queda registrado en *Correos enviados*.
+   - **Mandar a Resultados:** las marcas de la selección final quedan guardadas como provisorias. Nada es
+     definitivo hasta confirmar en *Resultados*, que también es donde se avisa a los estudiantes.
 6. **Cerrar proceso** (en *Configurar etapas*). Queda guardado en *Generaciones
    anteriores* y vuelve a aparecer "Iniciar proceso" para el año siguiente.
 
@@ -135,7 +169,7 @@ puede consultar con un clic en la barra, sin retroceder el proceso.
 
 ## Exportar y descargar
 
-Cada tipo de documento tiene su color: **verde = Excel**, **azul = Word**.
+Cada tipo de documento tiene su color: **verde = Excel**, **azul = Word**, **rojo = PDF**. Bajar un archivo lleva una flecha hacia abajo y subir uno lleva una carpeta; las acciones secundarias (por ejemplo «Reemplazar») usan el mismo color pero con fondo blanco.
 
 - **Exportar a Excel** (botón verde, arriba en *Avance por etapa*). Está en todas las etapas,
   también al consultar una ya terminada. Trae los estudiantes de la etapa con los datos que se
@@ -184,9 +218,8 @@ API=http://localhost:8080/api node test/flujo-generaciones.mjs       # al final:
 
 ## Pendiente
 
-- **Página de Selección de becarios** (la última etapa): comparar a los entrevistados, guardar
-  la apreciación general de la entrevista (aceptaría / con dudas / no aceptaría), el cupo y
-  la decisión del Comité.
+- **Cartolas RSH:** definir con la fundación el consentimiento de las familias y la retención de las cartolas
+  que llegan por correo; probar con más cartolas reales (hogares con más integrantes) por si el diseño varía.
 - Aceptación del liceo para los seleccionados.
 - Importar el cuestionario de la etapa 3 (personas del hogar según el formulario) y, con eso,
   el Excel de Puntajes (se coordina con quien hace el RSH y el ranking).

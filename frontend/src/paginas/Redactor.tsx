@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
 import { useProceso } from '../Layout';
@@ -28,6 +28,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const qc = useQueryClient();
   const avisar = useAviso();
   const navegar = useNavigate();
+  const adjuntoExterno = useSearchParams()[0].get('adjunto');
   const cuerpoRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: plantillas } = useQuery({ queryKey: ['plantillas'], queryFn: () => api.get<Plantilla[]>('/comunicacion/plantillas') });
@@ -47,6 +48,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const [grupo, setGrupo] = useState<Grupo>(filtro ? 'POSTULANTES' : origen?.grupo ?? inicial.grupo ?? 'CONTRAPARTES');
   const [liceoIds, setLiceoIds] = useState<string[]>(inicial.liceoIds ?? []);
   const [estudiantes, setEstudiantes] = useState<keyof typeof ESTUDIANTES>('todos');
+  const [correosExtra, setCorreosExtra] = useState('');
   const [plantillaId, setPlantillaId] = useState<string>(origen?.plantilla_id ?? '');
   const [proposito, setProposito] = useState(origen?.proposito ?? 'OTRO');
   const [asunto, setAsunto] = useState(inicial.reenviar ? `Recordatorio: ${inicial.reenviar.asunto}` : origen?.asunto ?? '');
@@ -61,14 +63,20 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const [nombrePlantilla, setNombrePlantilla] = useState('');
 
   // Cualquier cambio en el correo invalida la revisión.
-  useEffect(() => { setPrevia(null); setError(''); }, [grupo, liceoIds, estudiantes, asunto, cuerpo]);
+  useEffect(() => { setPrevia(null); setError(''); }, [grupo, liceoIds, estudiantes, correosExtra, asunto, cuerpo]);
+
+  // Directivos de la fundación: las cuentas de solo lectura van solas; aquí se pueden sumar otros correos.
+  const extras = [...new Set(correosExtra.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const extrasInvalidos = extras.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
 
   const aplicarPlantilla = (id: string) => {
     setPlantillaId(id);
     const p = plantillas?.find((x) => x.id === id);
     if (!p) return;
     setAsunto(p.asunto); setCuerpo(p.cuerpo); setProposito(p.proposito);
-    setAdjuntos(p.adjuntos.map((a) => ({ id: a.id, nombre: a.nombre })));
+    // El archivo que viene de otra pantalla (por ejemplo, el Excel de la selección final) se conserva; los de la plantilla anterior no.
+    setAdjuntos((actual) => [...actual.filter((a) => a.id === adjuntoExterno), ...p.adjuntos.map((a) => ({ id: a.id, nombre: a.nombre }))]);
+    if (p.proposito === 'INFORME_DIRECTIVOS' && !filtro) setGrupo('DIRECTIVOS');
     // Invitación: si la plantilla trae el listado de estudiantes va a las contrapartes de los liceos;
     // si no, a cada estudiante.
     if (p.proposito === 'INVITACION_ESTUDIANTES' && !filtro) {
@@ -91,6 +99,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
     if (inicial.reenviar) s.envioOrigenId = inicial.reenviar.id;
     else if (filtro) s.filtroEtapa = filtro;
     else if (grupo === 'LICEO') s.liceoIds = liceoIds;
+    else if (grupo === 'DIRECTIVOS') s.correosExtra = extras;
     else if (grupo === 'POSTULANTES' && estudiantes !== 'todos') {
       s.postulacionIds = (invitados ?? []).filter((i) => i.confirmacion === estudiantes).map((i) => i.id);
     }
@@ -132,6 +141,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const validar = () => {
     if (!asunto.trim() || !cuerpo.trim()) return 'Escribe el asunto y el cuerpo del correo.';
     if (grupo === 'LICEO' && !inicial.reenviar && !liceoIds.length) return 'Elige al menos un liceo.';
+    if (grupo === 'DIRECTIVOS' && extrasInvalidos.length) return `Revisa estos correos: ${extrasInvalidos.join(', ')}`;
     return '';
   };
 
@@ -192,6 +202,15 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
                 {Object.entries(PROPOSITOS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
               </select>
             </div>
+          </div>
+        )}
+
+        {grupo === 'DIRECTIVOS' && !inicial.reenviar && (
+          <div>
+            <p className="mb-2 text-xs text-gray-500">Le llega a las cuentas de <strong>solo lectura</strong> de la plataforma (las de quienes deciden la beca). Si falta alguien, agrégalo aquí.</p>
+            <label className="label" htmlFor="extras">Otros correos (opcional, separados por coma o espacio)</label>
+            <textarea id="extras" rows={2} className="input" value={correosExtra} placeholder="direccion@fundacion.cl, otra@fundacion.cl" onChange={(e) => setCorreosExtra(e.target.value)} />
+            {extrasInvalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {extrasInvalidos.join(', ')}</span>}
           </div>
         )}
 

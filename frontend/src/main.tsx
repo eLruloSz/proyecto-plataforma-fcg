@@ -20,6 +20,8 @@ import { Perfil } from './paginas/Perfil';
 import { Avance } from './paginas/Avance';
 import { Entrevistas } from './paginas/Entrevistas';
 import { Seleccion } from './paginas/Seleccion';
+import { CargarCartolas } from './paginas/CargarCartolas';
+import { CartolasRsh } from './paginas/CartolasRsh';
 import { PantallaInicio, useInicio } from './paginas/InicioProceso';
 import { DetalleGeneracion, PaginaGeneraciones } from './paginas/Generaciones';
 
@@ -59,6 +61,8 @@ function Rutas() {
         <Route path="generaciones/:anio" element={<DetalleGeneracion />} />
         <Route path="perfil" element={<Perfil />} />
         {!soloLectura && <Route path="usuarios" element={<Usuarios />} />}
+        {!soloLectura && <Route path="cartolas" element={<CartolasRsh />} />}
+        {!soloLectura && <Route path="cartolas/masiva" element={<CargarCartolas />} />}
         <Route path="*" element={<Navigate to="/" />} />
       </Route>
     </Routes>
