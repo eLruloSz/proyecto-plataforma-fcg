@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
-import { DATOS_DE_CARTOLA, datosFaltantes } from '../cartolas';
+import { compararPersonas, DATOS_DE_CARTOLA, datosFaltantes } from '../cartolas';
 import { tipoEtapa, useEtapa } from '../etapa';
 import { Cargando, Caja, ErrorCarga, Etiqueta, fecha, Icono, Vacio } from '../ui';
 import { CargarRsh, EstudianteRsh } from './CargarRsh';
@@ -167,6 +167,7 @@ function Fila({ f, cartola, faltan, onCargar }: { f: FilaEstado; cartola: Estado
   const personas = ficha?.personas_hogar as number | null | undefined;
   const tramo = ficha?.tramo_rsh as number | null | undefined;
   const ingresos = ficha?.ingresos_hogar as string | null | undefined;
+  const comparacion = compararPersonas(ficha?.personas_formulario, personas);
   return (
     <tr>
       <td className="text-center text-sm font-semibold text-gray-700">{f.ranking ?? <span className="font-normal text-gray-300">—</span>}</td>
@@ -183,6 +184,9 @@ function Fila({ f, cartola, faltan, onCargar }: { f: FilaEstado; cartola: Estado
               {tramo != null && <span className="text-gray-400"> · tramo {tramo}%</span>}
             </div>
             {ingresos && <div className="max-w-[220px] truncate text-gray-500" title={ingresos}>{ingresos}</div>}
+            {comparacion && !comparacion.coincide && (
+              <div title="Personas del hogar: formulario del estudiante vs. cartola"><Etiqueta tono="amarillo">Formulario {comparacion.formulario} · cartola {comparacion.cartola}</Etiqueta></div>
+            )}
           </div>
         )}
       </td>

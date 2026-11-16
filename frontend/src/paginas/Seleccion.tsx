@@ -37,6 +37,30 @@ interface Finalista {
   entrevistas: EntrevistaFinalista[];
   sugerencia: { apreciacion: Apreciacion; etapa: string; resultado: Resultado } | null;
 }
+/**
+ * RSH del finalista. Igual que en el backend (common/rsh.ts): manda el Excel del ranking y la ficha
+ * (tramo leído de la cartola) es el respaldo, también cuando el ranking dice "P" y después se cargó la cartola.
+ * valor = porcentaje; pendiente = no hay porcentaje y está marcado como pendiente.
+ */
+function rshDe(f: Finalista): { valor: number | null; pendiente: boolean } {
+  const r = f.ranking?.rsh;
+  const tramo = f.ficha?.tramo_rsh ?? null;
+  if (r !== null && r !== undefined && String(r).trim() !== '') {
+    const s = String(r).trim();
+    if (/^p/i.test(s)) return tramo !== null ? { valor: tramo, pendiente: false } : { valor: null, pendiente: true };
+    const n = Number(s.replace('%', '').replace(',', '.'));
+    if (Number.isFinite(n)) return { valor: n > 0 && n <= 1 ? Math.round(n * 100) : n, pendiente: false };
+  }
+  if (tramo !== null) return { valor: tramo, pendiente: false };
+  return { valor: null, pendiente: !!f.ficha?.rsh_pendiente };
+}
+const textoRsh = (f: Finalista) => { const r = rshDe(f); return r.pendiente ? 'Pendiente' : r.valor !== null ? `${r.valor}%` : null; };
+function EtiquetaRshFinalista({ f }: { f: Finalista }) {
+  const r = rshDe(f);
+  if (r.pendiente) return <Etiqueta tono="amarillo">RSH pendiente</Etiqueta>;
+  return r.valor !== null ? <Etiqueta>RSH {r.valor}%</Etiqueta> : null;
+}
+
 interface VistaSeleccion {
   etapa: { id: string; orden: number; nombre: string; cupo: number | null; estado: string };
   resumen: {
@@ -354,7 +378,7 @@ function FilaFinalista({ f, soloLectura, ocupado, comparar, sinCupoParaComparar,
     try { await api.descargar(`/entrevistas/${e.etapa_id}/estudiantes/${f.id}/pauta-completada`, e.pauta?.nombre ?? `Pauta ${f.codigo}.docx`); }
     catch (err) { avisar((err as Error).message, 'error'); }
   };
-  const rsh = f.ficha ? (f.ficha.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : f.ficha.tramo_rsh !== null ? <Etiqueta>RSH {f.ficha.tramo_rsh}%</Etiqueta> : null) : null;
+  const rsh = <EtiquetaRshFinalista f={f} />;
   return (
     <tr className={f.resultado === 'PASA' ? 'bg-green-50/50' : f.resultado === 'NO_PASA' ? 'bg-red-50/40' : f.en_espera ? 'bg-amber-50/50' : ''}>
       <td className="w-8 text-center">
@@ -476,7 +500,7 @@ function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onA
           {f.ranking?.puntaje_total != null && <div className="text-center"><div className="text-xl font-bold">{nota(f.ranking.puntaje_total)}</div><div className="text-[10px] uppercase text-gray-400">puntaje</div></div>}
           {f.promedio !== null && <div className="text-center"><div className="text-xl font-bold">{nota(f.promedio)}</div><div className="text-[10px] uppercase text-gray-400">promedio</div></div>}
           <div className="flex flex-wrap items-center gap-1.5">
-            {fi && (fi.rsh_pendiente ? <Etiqueta tono="amarillo">RSH pendiente</Etiqueta> : fi.tramo_rsh !== null && <Etiqueta>RSH {fi.tramo_rsh}%</Etiqueta>)}
+            <EtiquetaRshFinalista f={f} />
             {ap ? <span className={`rounded border px-1.5 py-0.5 text-xs ${APRECIACIONES[ap].chip}`}>{APRECIACIONES[ap].texto}</span> : <span className="text-xs text-gray-400">sin apreciación</span>}
           </div>
           <div className="ml-auto"><Decision f={f} soloLectura={soloLectura} ocupado={ocupado} onMarcar={onMarcar} /></div>
@@ -506,7 +530,7 @@ function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onA
                 <section>
                   <h3 className="subtitulo mb-3">Situación familiar (ficha RSH)</h3>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-                    <Dato t="Tramo RSH" v={fi.rsh_pendiente ? 'Pendiente' : fi.tramo_rsh !== null ? `${fi.tramo_rsh}%` : null} />
+                    <Dato t="Tramo RSH" v={textoRsh(f)} />
                     <Dato t="Personas del hogar" v={SI_NO(fi.personas_hogar)} />
                     <Dato t="Ingresos del hogar" v={fi.ingresos_hogar} />
                     <Dato t="Menores de 18" v={SI_NO(fi.menores_18)} />
@@ -553,7 +577,6 @@ interface FilaComparacion {
   necesidad?: 'mayor' | 'menor';                // situación familiar: el valor de mayor necesidad se subraya (discreto)
 }
 const PUNTAJE_APRECIACION: Record<Apreciacion, number> = { ACEPTARIA: 3, ACEPTARIA_CON_DUDAS: 2, NO_ACEPTARIA: 1 };
-const textoRsh = (f: Finalista) => (f.ficha ? (f.ficha.rsh_pendiente ? 'Pendiente' : f.ficha.tramo_rsh !== null ? `${f.ficha.tramo_rsh}%` : null) : null);
 const numFicha = (campo: 'personas_hogar' | 'menores_18' | 'mayores_60' | 'con_discapacidad' | 'con_dependencia' | 'con_nee') =>
   (f: Finalista) => f.ficha?.[campo] ?? null;
 
@@ -567,7 +590,7 @@ const GRUPOS_COMPARACION: { titulo: string; filas: FilaComparacion[] }[] = [
   ] },
   { titulo: 'Situación familiar', filas: [
     // Tramo más bajo = hogar con menos recursos.
-    { titulo: 'Tramo RSH', valor: (f) => (f.ficha && !f.ficha.rsh_pendiente ? f.ficha.tramo_rsh : null), texto: textoRsh, necesidad: 'menor' },
+    { titulo: 'Tramo RSH', valor: (f) => rshDe(f).valor, texto: textoRsh, necesidad: 'menor' },
     { titulo: 'Personas del hogar', valor: numFicha('personas_hogar'), necesidad: 'mayor' },
     { titulo: 'Ingresos del hogar', valor: () => null, texto: (f) => f.ficha?.ingresos_hogar ?? null },
     { titulo: 'Menores de 18', valor: numFicha('menores_18'), necesidad: 'mayor' },

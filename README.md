@@ -67,6 +67,12 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `18_seleccion_espera_notas.sql` | Lista de espera y notas del comité de la selección final |
 | `19_envios_directivos.sql` | Correos a los directivos de la fundación (grupo nuevo) y su plantilla |
 
+**Al actualizar desde una versión anterior** (base de datos ya creada): Docker solo ejecuta estas migraciones en una
+base nueva. Si ya tenías la base, corre a mano las que falten (por ejemplo 17, 18 y 19), una por una:
+`Get-Content db\17_cartolas_leidas.sql -Raw | docker exec -i becas-db psql -U becas -d becas`.
+Y reconstruye el backend (`docker compose up -d --build backend`): su imagen ahora instala `poppler-utils`
+(el lector de PDF de las cartolas).
+
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
 

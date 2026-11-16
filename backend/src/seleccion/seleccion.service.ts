@@ -5,6 +5,7 @@ import { agregarHoja, Columna, crearLibro, nombreArchivo } from '../exportacion/
 import { ArchivosService } from '../common/archivos.service';
 import { AuditoriaService } from '../common/auditoria.service';
 import { ProcesoActualService } from '../common/proceso-actual.service';
+import { textoRsh } from '../common/rsh';
 
 /**
  * Selección final (la última etapa, clave ENTREVISTA_COMITE).
@@ -235,7 +236,8 @@ export class SeleccionService {
       f.confirmado ? (f.resultado === 'PASA' ? 'Becario/a' : 'No seleccionado/a')
         : f.resultado === 'PASA' ? 'Seleccionado/a' : f.resultado === 'NO_PASA' ? 'No seleccionado/a'
         : f.en_espera ? `En espera (N°${f.puesto_espera})` : null;
-    const tramo = (f: Fila) => (f.ficha?.rsh_pendiente ? 'Pendiente' : f.ficha?.tramo_rsh != null ? `${f.ficha.tramo_rsh}%` : null);
+    // Igual que en el resto del sistema: manda el Excel del ranking y la ficha (cartola) es el respaldo.
+    const tramo = (f: Fila) => textoRsh(f.ranking?.rsh, f.ficha?.tramo_rsh, f.ficha?.rsh_pendiente);
     const observaciones = (f: Fila) => (f.entrevistas as Fila[])
       .filter((e) => e.observaciones).map((e) => `${etapaCorta(e.etapa)}: ${e.observaciones}`).join('\n') || null;
     const cols: Columna<Fila>[] = [

@@ -70,3 +70,24 @@ export function compararNombre(sistema: { nombres: string; paterno: string; mate
   if (paterno.length >= 3 && primero.length >= 3 && k.includes(paterno) && k.includes(primero) && (materno.length < 3 || k.includes(materno))) return 'APROXIMADO';
   return 'NO_COINCIDE';
 }
+
+/**
+ * Comparación que pidió la fundación: personas del hogar según el formulario del estudiante vs. según la cartola.
+ * null = falta uno de los dos datos (no se puede comparar).
+ */
+export function compararPersonas(formulario: unknown, cartola: unknown): { formulario: number; cartola: number; coincide: boolean } | null {
+  const a = formulario === null || formulario === undefined || formulario === '' ? NaN : Number(formulario);
+  const b = cartola === null || cartola === undefined || cartola === '' ? NaN : Number(cartola);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { formulario: a, cartola: b, coincide: a === b };
+}
+
+/**
+ * Lo que se manda a PUT /postulaciones/:id/ficha al guardar una cartola: solo lo que trae (lo vacío no borra nada).
+ * Si trae tramo, el RSH deja de estar "Pendiente" (la "P" del ranking).
+ */
+export function cuerpoFicha(datos: Partial<DatosFicha>, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  const cuerpo: Record<string, unknown> = Object.fromEntries(Object.entries(datos).filter(([, v]) => v !== null && v !== undefined));
+  if (cuerpo.tramoRsh !== undefined) cuerpo.rshPendiente = false;
+  return { ...cuerpo, ...extra };
+}

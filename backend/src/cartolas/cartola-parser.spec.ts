@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { claveNombre, cuerpoRut, fechaIso, leerCartola, limpiarTexto, rutDelArchivo } from './cartola-parser';
 import { buscarIntegrante, emparejar, Postulante, prepararPostulante, rutTapado } from './emparejar';
@@ -131,7 +131,9 @@ describe('emparejar (cartola con RUT tapado)', () => {
 });
 
 (hayPdftotext ? describe : describe.skip)('extraerTexto + leerCartola con el PDF de ejemplo', () => {
-  it('lee el PDF sintético completo', async () => {
+  // Necesita el PDF de ejemplo (db/cartolas-demo/cartola-sintetica.pdf). Si no está, se salta en vez de fallar.
+  // ¡Hay que subir ese PDF al repo para que esta prueba corra en todos los computadores!
+  (existsSync(PDF) ? it : it.skip)('lee el PDF sintético completo', async () => {
     const c = leerCartola(await extraerTexto(readFileSync(PDF)));
     expect(c.esCartola).toBe(true);
     expect(c.emitidaEn).toBe('2026-11-15');

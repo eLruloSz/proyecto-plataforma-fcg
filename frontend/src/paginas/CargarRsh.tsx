@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import {
-  CAMPOS_FICHA, compararNombre, DatosFicha, ResultadoCartola, valorTexto,
+  CAMPOS_FICHA, compararNombre, compararPersonas, cuerpoFicha, DatosFicha, ResultadoCartola, valorTexto,
 } from '../cartolas';
 import { Caja, Etiqueta, Icono, Modal, useAviso } from '../ui';
 
@@ -51,6 +51,9 @@ export function CargarRsh({ e, onCerrar }: { e: EstudianteRsh; onCerrar: () => v
   const [confirmaIdentidad, setConfirmaIdentidad] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState('');
+  /** Personas del hogar que declaró el estudiante en el formulario (para comparar con la cartola). */
+  const formularioInicial = e.ficha?.personas_formulario == null ? '' : String(e.ficha.personas_formulario);
+  const [formulario, setFormulario] = useState(formularioInicial);
 
   const nombre = `${e.nombres} ${e.apellido_paterno}${e.apellido_materno ? ' ' + e.apellido_materno : ''}`;
   const set = (k: keyof Form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setErrorForm(''); };
@@ -99,12 +102,14 @@ export function CargarRsh({ e, onCerrar }: { e: EstudianteRsh; onCerrar: () => v
 
   // ---- Guardar -----------------------------------------------------------
   const exigeConfirmar = !!previa && (previa.identidad.estado === 'APROXIMADO' || previa.identidad.estado === 'NO_COINCIDE');
+  const formularioValido = formulario.trim() === '' || (Number.isInteger(Number(formulario)) && Number(formulario) >= 1 && Number(formulario) <= 30);
   const guardar = async () => {
     if (!previa) return;
     setGuardando(true); setErrorGuardar('');
     try {
       // Solo se envía lo que hay: un dato que falta no borra lo que ya tenía la ficha.
-      const cuerpo = Object.fromEntries(Object.entries(previa.datos).filter(([, v]) => v !== null && v !== undefined));
+      const extra = formulario !== formularioInicial ? { personasFormulario: aNumero(formulario) } : {};
+      const cuerpo = cuerpoFicha(previa.datos, extra);
       await api.put(`/postulaciones/${e.id}/ficha`, cuerpo);
       if (previa.origen === 'pdf' && previa.hash) await api.post('/cartolas/registro', { postulacionId: e.id, hash: previa.hash, emitidaEn: previa.emitidaEn ?? null });
       ['cartolas', 'avance', 'seleccion', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
@@ -124,7 +129,7 @@ export function CargarRsh({ e, onCerrar }: { e: EstudianteRsh; onCerrar: () => v
   const pie = previa ? (
     <>
       <button className="btn-secundario" disabled={guardando} onClick={() => setPrevia(null)}>← Volver</button>
-      <button className="btn-primario" disabled={guardando || (exigeConfirmar && !confirmaIdentidad)} onClick={guardar}>
+      <button className="btn-primario" disabled={guardando || (exigeConfirmar && !confirmaIdentidad) || !formularioValido} onClick={guardar}>
         {guardando ? 'Guardando…' : 'Guardar en la ficha'}
       </button>
     </>
@@ -212,15 +217,17 @@ export function CargarRsh({ e, onCerrar }: { e: EstudianteRsh; onCerrar: () => v
         )}
 
         {previa && (
-          <VistaPrevia previa={previa} e={e} nombre={nombre} confirma={confirmaIdentidad} onConfirma={setConfirmaIdentidad} exigeConfirmar={exigeConfirmar} error={errorGuardar} />
+          <VistaPrevia previa={previa} e={e} nombre={nombre} confirma={confirmaIdentidad} onConfirma={setConfirmaIdentidad} exigeConfirmar={exigeConfirmar} error={errorGuardar}
+            formulario={formulario} onFormulario={setFormulario} formularioValido={formularioValido} />
         )}
       </div>
     </Modal>
   );
 }
 
-function VistaPrevia({ previa, e, nombre, confirma, onConfirma, exigeConfirmar, error }: {
+function VistaPrevia({ previa, e, nombre, confirma, onConfirma, exigeConfirmar, error, formulario, onFormulario, formularioValido }: {
   previa: Previa; e: EstudianteRsh; nombre: string; confirma: boolean; onConfirma: (v: boolean) => void; exigeConfirmar: boolean; error: string;
+  formulario: string; onFormulario: (v: string) => void; formularioValido: boolean;
 }) {
   const id = previa.identidad;
   const est = NOMBRE_ESTADO[id.estado];
@@ -270,6 +277,9 @@ function VistaPrevia({ previa, e, nombre, confirma, onConfirma, exigeConfirmar, 
         )}
       </section>
 
+      <ComparacionFormulario formulario={formulario} onFormulario={onFormulario} valido={formularioValido}
+        cartola={previa.datos.personasHogar ?? (e.ficha?.personas_hogar as number | null | undefined) ?? null} />
+
       {previa.avisos.length > 0 && <Caja tono="amarillo"><ul className="list-disc space-y-0.5 pl-5">{previa.avisos.map((a, i) => <li key={i}>{a}</li>)}</ul></Caja>}
 
       {/* 2. Qué cambia en la ficha */}
@@ -305,5 +315,34 @@ function VistaPrevia({ previa, e, nombre, confirma, onConfirma, exigeConfirmar, 
       </section>
       {error && <p className="text-red-700" role="alert">{error}</p>}
     </div>
+  );
+}
+
+/** Personas del hogar: lo que dijo el estudiante en el formulario vs. lo que dice la cartola (lo pidió la fundación). */
+function ComparacionFormulario({ formulario, onFormulario, cartola, valido }: {
+  formulario: string; onFormulario: (v: string) => void; cartola: number | null; valido: boolean;
+}) {
+  const c = valido ? compararPersonas(formulario, cartola) : null;
+  const borde = !c ? 'border-gray-200' : c.coincide ? 'border-green-300 bg-green-50/40' : 'border-yellow-300 bg-yellow-50/50';
+  return (
+    <section className={`rounded-lg border p-3 ${borde}`}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Personas del hogar: formulario vs. cartola</h3>
+        {c && (c.coincide ? <Etiqueta tono="verde">Coinciden</Etiqueta>
+          : <Etiqueta tono="amarillo">No coinciden ({c.formulario > c.cartola ? '+' : ''}{c.formulario - c.cartola})</Etiqueta>)}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="label">Según el formulario del estudiante</span>
+          <input type="number" min={1} max={30} className="input py-1.5" placeholder="Sin dato" value={formulario} onChange={(ev) => onFormulario(ev.target.value)} />
+          {!valido && <span className="mt-1 block text-xs text-red-700">Debe ser un número entre 1 y 30.</span>}
+        </label>
+        <div>
+          <div className="label">Según la cartola</div>
+          <div className="py-1.5 text-base font-semibold">{cartola ?? <span className="text-sm font-normal text-gray-400">sin dato</span>}</div>
+        </div>
+      </div>
+      {c && !c.coincide && <p className="mt-2 text-xs text-yellow-900">El estudiante declaró {c.formulario} y la cartola dice {c.cartola}. Puedes anotar el motivo en las observaciones de la ficha.</p>}
+    </section>
   );
 }

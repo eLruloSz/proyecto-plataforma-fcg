@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
-import { DatosFicha, Estudiante, ResultadoCartola as Resultado, Verificacion } from '../cartolas';
+import { compararPersonas, cuerpoFicha, DatosFicha, Estudiante, ResultadoCartola as Resultado, Verificacion } from '../cartolas';
 import { Caja, Etiqueta, fecha, Icono, useAviso } from '../ui';
 
 /**
@@ -76,7 +76,7 @@ export function CargarCartolas() {
     for (const f of elegibles) {
       try {
         // Solo se envía lo que la cartola trajo: lo que no se pudo leer no borra lo que ya había en la ficha.
-        const cuerpo = Object.fromEntries(Object.entries(f.r.ficha ?? {}).filter(([, v]) => v !== null));
+        const cuerpo = cuerpoFicha(f.r.ficha ?? {});
         await api.put(`/postulaciones/${f.estudiante!.id}/ficha`, cuerpo);
         await api.post('/cartolas/registro', { postulacionId: f.estudiante!.id, hash: f.r.hash, emitidaEn: f.r.emitidaEn ?? null });
         cambiar(f.clave, { estadoGuardado: 'guardado', aplicar: false });
@@ -246,9 +246,19 @@ function FilaCartola({ f, onCambio, onAsignar }: { f: Fila; onCambio: (c: Partia
           })}
         </dl>
       )}
+      {estudiante && r.ficha && <PersonasFormulario f={f} />}
       {r.avisos.length > 0 && <ul className="list-disc space-y-0.5 pl-5 text-xs text-amber-800">{r.avisos.map((a, i) => <li key={i}>{a}</li>)}</ul>}
     </div>
   );
+}
+
+/** Personas del hogar según el formulario del estudiante (ya cargado en su ficha) vs. según esta cartola. */
+function PersonasFormulario({ f }: { f: Fila }) {
+  const c = compararPersonas(f.estudiante?.fichaActual?.personas_formulario, f.r.ficha?.personasHogar);
+  if (!c) return <div className="text-xs text-gray-400">Personas según el formulario: sin dato (se puede anotar al cargar la cartola de a una).</div>;
+  return c.coincide
+    ? <div className="text-xs text-green-700">Personas del hogar: formulario {c.formulario} = cartola {c.cartola} ✓</div>
+    : <div className="text-xs font-medium text-amber-800">Personas del hogar no coinciden: el formulario dice {c.formulario} y la cartola {c.cartola}.</div>;
 }
 
 /** Para asignar a mano una cartola cuyo RUT no se reconoció. */
