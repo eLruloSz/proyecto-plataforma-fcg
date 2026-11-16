@@ -183,9 +183,18 @@ export class TareasService {
               COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND NOT solicitud_notas AND NOT nomina)::int AS sin_solicitud_notas,
               COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND NOT nomina)::int AS sin_nomina,
               COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND nomina AND invitados = 0)::int AS sin_invitados,
+              -- Liceos que participan y aún no tienen invitados (con o sin nómina): mientras haya alguno,
+              -- los pasos que dependen de los invitados no están terminados.
+              COUNT(*) FILTER (WHERE estado = 'PARTICIPA' AND invitados = 0)::int AS participan_sin_invitados,
               COUNT(*) FILTER (WHERE invitados > 0)::int AS con_invitados,
               COUNT(*) FILTER (WHERE invitados > 0 AND NOT invitacion)::int AS sin_invitacion
          FROM lic`, [procesoId]);
+    // Último correo de inicio (o de presentación) enviado a los liceos: ahí se marca quién participa.
+    const [inicio] = await this.ds.query(
+      `SELECT id FROM envios
+        WHERE proceso_id = $1 AND proposito IN ('PRESENTACION', 'SOLICITUD_NOTAS') AND grupo <> 'POSTULANTES'
+          AND envio_origen_id IS NULL
+        ORDER BY enviado_en DESC LIMIT 1`, [procesoId]);
     const [i] = await this.ds.query(
       `SELECT COUNT(*)::int AS invitados,
               COUNT(*) FILTER (WHERE pe.email IS NULL AND p.estado NOT IN ('NO_CONTINUA','DESISTIO'))::int AS sin_email,
@@ -193,6 +202,9 @@ export class TareasService {
               COUNT(*) FILTER (WHERE p.confirmacion = 'CONFIRMADO')::int AS aceptaron
          FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id
         WHERE p.proceso_id = $1`, [procesoId]);
+    // Un paso que depende de los invitados solo está hecho cuando TODOS los liceos que participan
+    // ya tienen invitados (si falta una nómina, falta elegir sus invitados).
+    const todosConInvitados = d.participan > 0 && d.participan_sin_invitados === 0 && i.invitados > 0;
     return [
       { clave: 'presentacion', titulo: 'Enviar el correo de presentación a los liceos', hecha: d.total > 0 && d.presentados >= d.total,
         detalle: `${d.presentados} de ${plural(d.total, 'liceo', 'liceos')}`,
@@ -200,7 +212,10 @@ export class TareasService {
         accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=SOLICITUD_NOTAS' } },
       { clave: 'participacion', titulo: 'Saber qué liceos participan', hecha: d.total > 0 && d.sin_respuesta === 0,
         detalle: `${d.participan} participan · ${d.no_participan} no · ${d.sin_respuesta} sin respuesta`,
-        accion: { texto: 'Ver respuestas', ruta: '/comunicacion' } },
+        // Se marca en el correo de inicio (columna "¿Participa?"); si aún no se envía, en Liceos.
+        accion: inicio
+          ? { texto: 'Marcar quién participa', ruta: `/comunicacion/envios/${inicio.id}` }
+          : { texto: 'Ver liceos', ruta: '/liceos' } },
       { clave: 'solicitud_notas', titulo: 'Pedir las notas a los liceos que participan',
         hecha: d.participan > 0 && d.sin_solicitud_notas === 0,
         detalle: d.sin_solicitud_notas
@@ -210,20 +225,24 @@ export class TareasService {
       { clave: 'nominas', titulo: 'Recibir y subir las nóminas de notas', hecha: d.participan > 0 && d.sin_nomina === 0,
         detalle: d.sin_nomina ? `Faltan ${plural(d.sin_nomina, 'nómina', 'nóminas')}` : 'Todas recibidas.',
         accion: { texto: 'Liceos y nóminas', ruta: '/liceos' } },
-      { clave: 'invitados', titulo: 'Elegir a los invitados de cada liceo', hecha: d.con_invitados > 0 && d.sin_invitados === 0,
-        detalle: d.sin_invitados ? `${plural(d.sin_invitados, 'liceo', 'liceos')} con nómina y sin invitados` : `${i.invitados} invitados`,
+      { clave: 'invitados', titulo: 'Elegir a los invitados de cada liceo', hecha: todosConInvitados,
+        detalle: d.participan_sin_invitados
+          ? [`${d.participan - d.participan_sin_invitados} de ${plural(d.participan, 'liceo', 'liceos')} con invitados`,
+             d.sin_invitados && `${d.sin_invitados} con nómina por elegir`,
+             d.sin_nomina && `${d.sin_nomina} esperando la nómina`].filter(Boolean).join(' · ')
+          : `${i.invitados} invitados`,
         accion: { texto: 'Liceos y nóminas', ruta: '/liceos' } },
       // Primero los contactos y después el correo: sin email el correo no les llega.
-      { clave: 'contactos', titulo: 'Subir los contactos de los invitados (Excel)', hecha: i.invitados > 0 && i.sin_email === 0,
+      { clave: 'contactos', titulo: 'Subir los contactos de los invitados (Excel)', hecha: todosConInvitados && i.sin_email === 0,
         detalle: i.sin_email
           ? `${plural(i.sin_email, 'invitado', 'invitados')} sin email. Súbelos antes de enviarles el correo.`
           : 'Todos tienen email.',
         accion: { texto: 'Subir Excel', ruta: '/invitados?importar=1' } },
-      { clave: 'invitacion', titulo: 'Enviar la invitación a los estudiantes', hecha: d.con_invitados > 0 && d.sin_invitacion === 0,
+      { clave: 'invitacion', titulo: 'Enviar la invitación a los estudiantes', hecha: todosConInvitados && d.sin_invitacion === 0,
         detalle: (d.sin_invitacion ? `${plural(d.sin_invitacion, 'liceo', 'liceos')} sin invitación enviada` : 'Enviada en todos los liceos.')
           + (d.sin_invitacion && i.sin_email ? ` Primero sube los contactos: ${plural(i.sin_email, 'invitado', 'invitados')} sin email.` : ''),
         accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=INVITACION_ESTUDIANTES' } },
-      { clave: 'respuestas', titulo: 'Registrar quién acepta postular', hecha: i.invitados > 0 && i.sin_respuesta === 0,
+      { clave: 'respuestas', titulo: 'Registrar quién acepta postular', hecha: todosConInvitados && i.sin_respuesta === 0,
         detalle: `${i.aceptaron} aceptaron · ${i.sin_respuesta} sin respuesta`,
         accion: { texto: 'Invitados', ruta: '/invitados' } },
     ];

@@ -515,8 +515,9 @@ export class EnviosService {
   }
 
   /**
-   * Marca (o desmarca) que un destinatario respondió. En el correo de
-   * presentación se puede indicar además si el liceo participa o no.
+   * Marca (o desmarca) que un destinatario respondió. En el primer correo a los
+   * liceos (presentación, o el de inicio que además pide las notas) se puede
+   * indicar además si el liceo participa o no.
    */
   async marcarRespuesta(
     envioId: string,
@@ -546,7 +547,7 @@ export class EnviosService {
       if (d.liceo_id && d.grupo !== 'POSTULANTES') {
         const hito = d.hito_respuesta ?? HITO_RESPUESTA_POR_PROPOSITO[d.proposito];
         if (hito && datos.respondido) await this.hitos.marcarAutomatico(procesoId, d.liceo_id, hito, em);
-        if (d.proposito === 'PRESENTACION' && datos.participa !== undefined) {
+        if (['PRESENTACION', 'SOLICITUD_NOTAS'].includes(d.proposito) && datos.participa !== undefined) {
           await em.query(
             `INSERT INTO participaciones_liceo (proceso_id, liceo_id, estado) VALUES ($1, $2, $3)
              ON CONFLICT (proceso_id, liceo_id) DO UPDATE SET estado = $3`,

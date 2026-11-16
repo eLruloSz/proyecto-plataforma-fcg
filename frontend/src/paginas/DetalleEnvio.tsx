@@ -45,7 +45,9 @@ export function DetalleEnvio() {
   const faltan = e.total - respondidos;
   const problemas = e.destinatarios.filter((d) => d.entrega === 'REBOTADO' || d.entrega === 'FALLIDO');
   const enCola = e.destinatarios.filter((d) => d.entrega === 'PENDIENTE').length;
-  const esPresentacion = e.proposito === 'PRESENTACION';
+  // Primer correo a los liceos (presentación, o el de inicio que también pide las notas):
+  // al registrar la respuesta se indica si el liceo participa.
+  const esPresentacion = ['PRESENTACION', 'SOLICITUD_NOTAS'].includes(e.proposito) && e.grupo !== 'POSTULANTES';
   const esLiceo = e.grupo !== 'POSTULANTES';
   const lista = e.destinatarios.filter((d) =>
     filtro === 'faltan' ? d.respuesta === 'PENDIENTE' : filtro === 'respondieron' ? d.respuesta === 'RESPONDIDO'
