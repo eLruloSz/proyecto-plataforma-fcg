@@ -21,7 +21,7 @@ export function tipoEtapa(e: Pick<Etapa, 'clave' | 'orden'>): TipoEtapa {
 /** Nombre corto de una etapa de entrevista para botones: "Preselección N°2" → "Preselección", "Selección de becarios" → "Selección". */
 export const etiquetaEntrevista = (nombre: string) => nombre.replace(/^Preselección.*/i, 'Preselección').replace(/^Selección.*/i, 'Selección');
 
-export interface ItemMenu { a: string; texto: string }
+export interface ItemMenu { a: string; texto: string; /** Solo lo ve el equipo (no las cuentas de solo lectura). */ soloEquipo?: boolean }
 
 /**
  * Lo que se trabaja en cada etapa (el menú muestra solo esto, además de Inicio, Comunicación y
@@ -39,7 +39,10 @@ export function menuDeEtapa(e: Etapa): ItemMenu[] {
     case 'ENCUENTRO':
       return [{ a: avance, texto: 'Encuentro online' }];
     case 'PRESELECCION':
-      return [{ a: avance, texto: 'Postulantes y ranking' }];
+      return [
+        { a: avance, texto: 'Postulantes y ranking' },
+        { a: '/cartolas', texto: 'Cartolas RSH', soloEquipo: true },
+      ];
     case 'ENTREVISTA':
       return [
         { a: `/entrevistas/${e.id}`, texto: 'Calendario de entrevistas' },

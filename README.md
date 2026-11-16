@@ -64,7 +64,6 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `15_hitos_flujo_2026.sql` | Seguimiento por liceo según el flujo actual: hitos por etapa, casi todos automáticos, 2 calculados (respuestas de invitados, entrevista final) |
 | `16_apreciacion_entrevista.sql` | Apreciación de la entrevista (aceptaría / con dudas / no aceptaría) y observaciones, para la selección final |
 | `17_cartolas_leidas.sql` | Huella (hash) y fecha de emisión de cada cartola RSH leída; el PDF no se guarda |
-| `18_seleccion_espera_notas.sql` | Lista de espera y notas del comité de la selección final |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
@@ -122,7 +121,10 @@ ofrece pasar a la siguiente.
    - Documentos recibidos.
    - Ficha RSH: datos de la cartola, con alertas de tramo y de diferencia de personas
      del hogar. La cartola no se guarda.
-   - **Cargar cartolas RSH (PDF)** (botón en *Resultados* de Preselección N°1; solo equipo): se suben una o
+   - **Cartolas RSH** (pestaña en el menú de Preselección N°1; solo equipo): lista de estudiantes con el estado de
+     su cartola y botón *Cargar* por estudiante (PDF o digitado a mano, con vista previa y comparación del nombre
+     del sistema con el de la cartola; «completar ficha» en Resultados lleva ahí con el estudiante elegido).
+     *Carga masiva* (`/cartolas/masiva`): se suben una o
      varias cartolas, el servidor las lee **en memoria** (`pdftotext`), muestra lo que encontró (tramo,
      personas del hogar, menores, mayores, ingreso, etc.) junto a lo que ya había en la ficha, y al confirmar
      lo guarda con el mismo `PUT /postulaciones/:id/ficha`. **El PDF no se guarda** y de los demás integrantes
@@ -140,13 +142,6 @@ ofrece pasar a la siguiente.
      un comentario, con filtro «Sin entrevistar». Estos campos nunca se bloquean.
    - **Descargar Word:** la pauta de entrevista de la fundación, rellenada con los datos
      del estudiante (ver *Exportar y descargar*).
-   - **Selección final** (etapa 5): cada finalista con todo lo que se sabe de él o ella, para decidir
-     quién recibe la beca. La decisión tiene tres opciones: *Seleccionar*, *En espera* y *No seleccionar*
-     (la lista de espera sigue el ranking). Incluye barra de cupo, **Comparar** de 2 a 3 finalistas lado a
-     lado (verde = mejor desempeño; subrayado = mayor necesidad), ficha navegable con las flechas, *Notas del
-     comité*, **Exportar a Excel** (solo lo importante, sin puntajes) y **Enviar a los directivos** (correo con
-     ese Excel a las cuentas de solo lectura y a los correos que se agreguen). La respuesta definitiva de cada
-     estudiante y los avisos se hacen desde *Resultados*.
 6. **Cerrar proceso** (en *Configurar etapas*). Queda guardado en *Generaciones
    anteriores* y vuelve a aparecer "Iniciar proceso" para el año siguiente.
 
@@ -206,6 +201,9 @@ API=http://localhost:8080/api node test/flujo-generaciones.mjs       # al final:
 
 - **Cartolas RSH:** definir con la fundación el consentimiento de las familias y la retención de las cartolas
   que llegan por correo; probar con más cartolas reales (hogares con más integrantes) por si el diseño varía.
+- **Página de Selección de becarios** (la última etapa): comparar a los entrevistados, guardar
+  la apreciación general de la entrevista (aceptaría / con dudas / no aceptaría), el cupo y
+  la decisión del Comité.
 - Aceptación del liceo para los seleccionados.
 - Importar el cuestionario de la etapa 3 (personas del hogar según el formulario) y, con eso,
   el Excel de Puntajes (se coordina con quien hace el RSH y el ranking).

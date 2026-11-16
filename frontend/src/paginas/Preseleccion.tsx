@@ -110,11 +110,13 @@ export function alertasFicha(f: FichaPostulacion | null): { tono: 'amarillo' | '
 }
 
 /** Celda de la tabla de la etapa: datos del hogar y alertas, con botón para abrir la ficha. */
-export function CeldaFicha({ f, onAbrir }: { f: Fila; onAbrir: () => void }) {
+/** `onCargar`: si el estudiante aún no tiene ficha, «completar ficha» lleva a Cartolas RSH con él ya elegido. */
+export function CeldaFicha({ f, onAbrir, onCargar }: { f: Fila; onAbrir: () => void; onCargar?: () => void }) {
   const alertas = alertasFicha(f.ficha);
   const apoyo = f.ficha ? (f.ficha.con_discapacidad ?? 0) + (f.ficha.con_dependencia ?? 0) + (f.ficha.con_invalidez ?? 0) + (f.ficha.con_nee ?? 0) : 0;
   return (
-    <button onClick={onAbrir} className="w-full min-w-[150px] rounded-md px-1 py-0.5 text-left hover:bg-gray-100" title="Ver o editar la ficha de postulación">
+    <button onClick={!f.ficha && onCargar ? onCargar : onAbrir} className="w-full min-w-[150px] rounded-md px-1 py-0.5 text-left hover:bg-gray-100"
+      title={!f.ficha && onCargar ? 'Cargar el RSH de este estudiante (cartola o a mano)' : 'Ver o editar la ficha de postulación'}>
       {!f.ficha ? <span className="text-xs text-gray-400 underline">completar ficha</span> : (
         <div className="space-y-0.5 text-xs">
           <div className="text-gray-800">

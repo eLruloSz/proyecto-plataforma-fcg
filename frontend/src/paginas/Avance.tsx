@@ -9,6 +9,7 @@ import { FechasEncuentro, fechaEncuentro, InscribirEnBloque, RegistrarAsistencia
 import { ImportarContactos } from './ImportarContactos';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
+import { useSesion } from '../sesion';
 import { CeldaFicha, CeldaLugar, CeldasPuntajes, COLUMNAS_RANKING, EncabezadoLugar, EncabezadosPuntajes, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
 import { ESTADOS } from './Entrevistas';
 
@@ -75,6 +76,7 @@ function Requisitos({ vista, onCerrar }: { vista: VistaAvance; onCerrar: () => v
 }
 
 export function Avance() {
+  const { soloLectura } = useSesion();
   const { etapaId: param } = useParams<{ etapaId?: string }>();
   const navegar = useNavigate();
   const qc = useQueryClient();
@@ -326,7 +328,7 @@ export function Avance() {
         {esPre && (
           <>
           <button className="btn-secundario" onClick={() => setSubiendoRanking(true)}>{ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
-          <Link className="btn-secundario" to="/cartolas" title="Sube las cartolas RSH en PDF: el sistema llena la ficha y descarta el archivo">Cargar cartolas RSH (PDF)</Link>
+          <Link className="btn-secundario" to="/cartolas" title="Qué estudiantes tienen su cartola RSH cargada; cargar una a una o varias a la vez">Cartolas RSH</Link>
           </>
         )}
         {esEntrevista && <Link className="btn-secundario" to={`/entrevistas/${e.id}`}>Calendario de entrevistas</Link>}
@@ -459,7 +461,7 @@ export function Avance() {
                   <td className="max-w-[160px] truncate text-gray-600" title={f.liceo}>{f.liceo}</td>
                   <td className="text-right tabular-nums">{nota(f.promedio)}</td>
                   {esPre && <CeldasPuntajes r={f.ranking} />}
-                  {esPre && <td><CeldaFicha f={f} onAbrir={() => setFichaDe(f)} /></td>}
+                  {esPre && <td><CeldaFicha f={f} onAbrir={() => setFichaDe(f)} onCargar={soloLectura ? undefined : () => navegar(`/cartolas?cargar=${f.id}`)} /></td>}
                   {esEncuentro && (
                     <>
                       <td>

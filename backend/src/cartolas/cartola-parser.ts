@@ -25,7 +25,11 @@ export interface DatosFicha {
 }
 
 /** Un integrante de la cartola, solo para emparejar al estudiante. `clave` = nombre sin tildes, espacios ni símbolos. */
-export interface Integrante { clave: string; rutParcial: string | null }
+export interface Integrante {
+  clave: string; rutParcial: string | null;
+  /** Nombre tal como lo escribe la cartola. Solo se muestra el del estudiante reconocido; el de los demás nunca sale del servidor. */
+  nombre?: string;
+}
 
 export interface CartolaLeida {
   esCartola: boolean;
@@ -136,7 +140,7 @@ export function leerCartola(textoCrudo: string): CartolaLeida {
 
   // Integrantes (solo para emparejar y para contrastar el total).
   const integrantes: Integrante[] = [...texto.matchAll(FILA_INTEGRANTE)].map((m) => ({
-    clave: claveNombre(m[2]), rutParcial: m[1].replace('.', ''),
+    clave: claveNombre(m[2]), rutParcial: m[1].replace('.', ''), nombre: m[2].trim().replace(/\s+/g, ' '),
   })).filter((i) => i.clave.length > 0);
 
   const personasHogar = resumen ? Number(resumen[1]) : Number.isFinite(totalDeclarado) ? totalDeclarado : integrantes.length || null;

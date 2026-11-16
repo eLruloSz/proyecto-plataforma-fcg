@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
+import { DatosFicha, Estudiante, ResultadoCartola as Resultado, Verificacion } from '../cartolas';
 import { Caja, Etiqueta, fecha, useAviso } from '../ui';
 
 /**
@@ -10,18 +11,12 @@ import { Caja, Etiqueta, fecha, useAviso } from '../ui';
  * aquí solo queda lo leído (que además no incluye datos de los demás integrantes del hogar).
  */
 
-interface DatosFicha {
-  tramoRsh: number | null; rshActualizada: string | null; personasHogar: number | null; menores18: number | null; mayores60: number | null;
-  conDiscapacidad: number | null; conDependencia: number | null; conInvalidez: number | null; conNee: number | null; ingresosHogar: string | null;
-}
-interface Estudiante { id: string; codigo: string; nombre: string; liceo: string; por?: 'RUT' | 'NOMBRE' | 'NOMBRE_APROXIMADO'; fichaActual: Record<string, unknown> | null; yaCargada: string | null }
-interface Resultado {
-  archivo: string; estado: 'OK' | 'REVISAR' | 'ERROR'; error?: string; hash?: string; emitidaEn?: string | null;
-  ficha?: DatosFicha; integrantes?: number; avisos: string[]; coincidencias: Estudiante[];
-}
 /** Una fila por estudiante: una cartola puede servir a varios hermanos; una sin reconocer espera que la asignen. */
 interface Fila {
-  clave: string; r: Resultado; estudiante: Estudiante | null; aplicar: boolean; estadoGuardado: 'pendiente' | 'guardado' | { error: string };
+  clave: string; r: Resultado; archivo: File; estudiante: Estudiante | null; aplicar: boolean;
+  estadoGuardado: 'pendiente' | 'guardado' | { error: string };
+  /** Resultado de comparar la cartola con un estudiante asignado a mano (el servidor relee el PDF). */
+  verificacion?: Verificacion; verificando?: boolean;
 }
 
 const PORTE_ENVIO = 5; // nginx acepta 12 MB por envío y cada PDF puede pesar hasta 2 MB
@@ -49,7 +44,7 @@ export function CargarCartolas() {
         const datos = new FormData();
         lote.forEach((a) => datos.append('archivos', a));
         const res = await api.enviarFormulario<Resultado[]>('/cartolas/leer', datos);
-        setFilas((previas) => [...previas, ...res.flatMap((r, j) => aFilas(r, `${previas.length}-${i}-${j}`))]);
+        setFilas((previas) => [...previas, ...res.flatMap((r, j) => aFilas(r, lote[j], `${previas.length}-${i}-${j}`))]);
         setLeyendo({ hechos: Math.min(i + lote.length, archivos.length), total: archivos.length });
       }
     } catch (e) { avisar((e as Error).message, 'error'); }
@@ -57,6 +52,22 @@ export function CargarCartolas() {
   };
 
   const cambiar = (clave: string, cambio: Partial<Fila>) => setFilas((fs) => fs.map((f) => (f.clave === clave ? { ...f, ...cambio } : f)));
+  /** Asignar a mano: el servidor vuelve a leer el PDF y dice si el nombre del estudiante aparece en esa cartola. */
+  const asignar = async (f: Fila, est: Estudiante) => {
+    cambiar(f.clave, { estudiante: est, aplicar: false, verificando: true, verificacion: undefined });
+    try {
+      const datos = new FormData();
+      datos.append('archivos', f.archivo);
+      const [r] = await api.enviarFormulario<Resultado[]>(`/cartolas/leer?postulacionId=${est.id}`, datos);
+      const v = r?.verificacion;
+      cambiar(f.clave, { verificando: false, verificacion: v, r: r?.ficha ? { ...f.r, avisos: r.avisos } : f.r, aplicar: v?.estado === 'COINCIDE' && !est.yaCargada });
+    } catch (e) { cambiar(f.clave, { verificando: false }); avisar((e as Error).message, 'error'); }
+  };
+
+  const [soloRevisar, setSoloRevisar] = useState(false);
+  const pendientes = filas.filter((f) => f.estadoGuardado !== 'guardado');
+  const aRevisar = pendientes.filter(necesitaRevision).length;
+  const mostradas = soloRevisar ? filas.filter(necesitaRevision) : filas;
   const elegibles = filas.filter((f) => f.aplicar && f.estudiante && f.estadoGuardado === 'pendiente');
 
   const guardar = async () => {
@@ -80,10 +91,10 @@ export function CargarCartolas() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="titulo">Cargar cartolas RSH</h1>
-          <p className="text-sm text-gray-500">Sube las cartolas en PDF (varias a la vez). El sistema lee los datos de la ficha y descarta el archivo.</p>
+          <h1 className="titulo">Carga masiva de cartolas RSH</h1>
+          <p className="text-sm text-gray-500">Sube varias cartolas en PDF a la vez. El sistema las lee, reconoce al estudiante por su nombre y descarta el archivo. Para una sola, usa «Cargar» en la lista.</p>
         </div>
-        <Link className="btn-secundario" to="/avance">Volver a Resultados</Link>
+        <Link className="btn-secundario" to="/cartolas">Volver a Cartolas RSH</Link>
       </div>
 
       <Caja tono="azul">
@@ -105,24 +116,90 @@ export function CargarCartolas() {
 
       {filas.length > 0 && (
         <div className="space-y-2">
-          {filas.map((f) => <FilaCartola key={f.clave} f={f} onCambio={(c) => cambiar(f.clave, c)} />)}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="text-gray-500">
+              {filas.length} cartola{filas.length === 1 ? '' : 's'} · {aRevisar === 0 ? <span className="text-green-700">todas coinciden</span> : <span className="font-medium text-amber-700">{aRevisar} por revisar</span>}
+            </span>
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input type="checkbox" className="h-4 w-4" checked={soloRevisar} onChange={(e) => setSoloRevisar(e.target.checked)} />
+              Mostrar solo las que hay que revisar
+            </label>
+          </div>
+          {soloRevisar && mostradas.length === 0 && <div className="py-4 text-center text-sm text-gray-400">No hay cartolas por revisar.</div>}
+          {mostradas.map((f) => <FilaCartola key={f.clave} f={f} onCambio={(c) => cambiar(f.clave, c)} onAsignar={(e) => asignar(f, e)} />)}
         </div>
       )}
     </div>
   );
 }
 
-function aFilas(r: Resultado, base: string): Fila[] {
+function aFilas(r: Resultado, archivo: File, base: string): Fila[] {
   const lista: (Estudiante | null)[] = r.coincidencias.length ? r.coincidencias : [null];
   return lista.map((est, i) => ({
-    clave: `${base}-${i}`, r, estudiante: est,
+    clave: `${base}-${i}`, r, archivo, estudiante: est,
     // Solo se marca sola la fila limpia: sin avisos, con estudiante reconocido y que no se haya cargado antes.
     aplicar: r.estado === 'OK' && !!est && !est.yaCargada,
     estadoGuardado: 'pendiente',
   }));
 }
 
-function FilaCartola({ f, onCambio }: { f: Fila; onCambio: (c: Partial<Fila>) => void }) {
+type EstadoIdentidad = 'COINCIDE' | 'APROXIMADO' | 'NO_COINCIDE';
+interface Identidad { estado: EstadoIdentidad; nombreCartola: string | null; rutCartola: string | null; rutCoincide: boolean | null; motivo?: Verificacion['motivo'] }
+
+/** ¿La cartola es de este estudiante? Del reconocimiento automático, o de la comprobación al asignar a mano. */
+function identidadDe(f: Fila): Identidad | null {
+  const e = f.estudiante;
+  if (!e) return null;
+  if (f.verificacion) {
+    const v = f.verificacion;
+    return { estado: v.estado, nombreCartola: v.nombreCartola, rutCartola: v.rutCartola, rutCoincide: v.rutCoincide, motivo: v.motivo };
+  }
+  if (e.por) {
+    return { estado: e.por === 'NOMBRE_APROXIMADO' ? 'APROXIMADO' : 'COINCIDE', nombreCartola: e.nombreCartola ?? null, rutCartola: e.rutCartola ?? null, rutCoincide: e.rutCoincide ?? null };
+  }
+  return null;
+}
+
+const IDENTIDAD: Record<EstadoIdentidad, { tono: 'verde' | 'amarillo' | 'rojo'; texto: string; borde: string }> = {
+  COINCIDE: { tono: 'verde', texto: 'Coincide', borde: 'border-green-200 bg-green-50/30' },
+  APROXIMADO: { tono: 'amarillo', texto: 'Nombre parecido: confirma', borde: 'border-yellow-300 bg-yellow-50/50' },
+  NO_COINCIDE: { tono: 'rojo', texto: 'No coincide', borde: 'border-red-300 bg-red-50/50' },
+};
+
+/** Nombre que tenemos del estudiante junto al que trae la cartola: para ver de un vistazo cuál no calza. */
+function Identidad({ f }: { f: Fila }) {
+  const e = f.estudiante!;
+  const id = identidadDe(f);
+  if (f.verificando) return <div className="rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-400">Comprobando que la cartola sea de {e.nombre}…</div>;
+  if (!id) return <div className="rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-400">Asignado a mano: no se comprobó el nombre.</div>;
+  const est = IDENTIDAD[id.estado];
+  return (
+    <div className={`grid gap-x-6 gap-y-1 rounded-md border px-3 py-2 text-xs sm:grid-cols-[1fr_1fr_auto] ${est.borde}`}>
+      <div><div className="text-[10px] uppercase text-gray-400">En el sistema</div><div className="font-medium text-gray-800">{e.nombre}</div></div>
+      <div>
+        <div className="text-[10px] uppercase text-gray-400">En la cartola</div>
+        {id.nombreCartola ? <div className="font-medium text-gray-800">{id.nombreCartola}</div> : <div className="italic text-gray-400">No aparece entre los integrantes</div>}
+        {id.rutCartola && (
+          <div className="text-gray-500">RUT {id.rutCartola}
+            {id.rutCoincide === true && <span className="ml-1 text-green-700">· calza con el cargado</span>}
+            {id.rutCoincide === false && <span className="ml-1 text-red-700">· NO calza con el cargado</span>}
+          </div>
+        )}
+      </div>
+      <div className="self-center"><Etiqueta tono={est.tono}>{est.texto}</Etiqueta></div>
+    </div>
+  );
+}
+
+/** Lo que conviene mirar antes de guardar: sin estudiante, nombre que no calza o parecido, avisos o error de lectura. */
+function necesitaRevision(f: Fila): boolean {
+  if (f.estadoGuardado === 'guardado') return false;
+  if (f.r.estado === 'ERROR' || !f.estudiante || f.r.avisos.length > 0) return true;
+  const id = identidadDe(f);
+  return !id || id.estado !== 'COINCIDE';
+}
+
+function FilaCartola({ f, onCambio, onAsignar }: { f: Fila; onCambio: (c: Partial<Fila>) => void; onAsignar: (e: Estudiante) => void }) {
   const { r, estudiante } = f;
   const guardado = f.estadoGuardado === 'guardado';
   if (r.estado === 'ERROR') {
@@ -145,11 +222,12 @@ function FilaCartola({ f, onCambio }: { f: Fila; onCambio: (c: Partial<Fila>) =>
             {r.archivo}{r.emitidaEn && <> · emitida {fecha(r.emitidaEn, false)}</>}{r.integrantes ? ` · ${r.integrantes} integrantes` : ''}
           </div>
         </div>
-        {estudiante?.por === 'NOMBRE_APROXIMADO' && <Etiqueta tono="amarillo">Nombre aproximado: confirma</Etiqueta>}
         {guardado && <Etiqueta tono="verde">Guardada</Etiqueta>}
         {typeof f.estadoGuardado === 'object' && <Etiqueta tono="rojo">{f.estadoGuardado.error}</Etiqueta>}
-        {!estudiante && <Buscador onElegir={(e) => onCambio({ estudiante: e, aplicar: true })} />}
+        {!estudiante && <Buscador onElegir={onAsignar} />}
+        {estudiante && !guardado && <button className="text-xs text-gray-500 underline" onClick={() => onCambio({ estudiante: null, aplicar: false, verificacion: undefined })}>cambiar</button>}
       </div>
+      {estudiante && <Identidad f={f} />}
       {r.ficha && (
         <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
           {CAMPOS.map(({ k, t, col }) => {

@@ -169,7 +169,7 @@ export function Layout() {
                 </div>
                 <div className="px-3 pb-1.5 text-xs leading-tight text-gray-600">{vista.nombre}</div>
                 <div className="space-y-0.5">
-                  {menuDeEtapa(vista).map((m) => <NavLink key={m.a} to={m.a} className={enlace}>{m.texto}</NavLink>)}
+                  {menuDeEtapa(vista).filter((m) => !(m.soloEquipo && soloLectura)).map((m) => <NavLink key={m.a} to={m.a} className={enlace}>{m.texto}</NavLink>)}
                 </div>
               </div>
             )}

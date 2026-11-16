@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Module, Post, Query, UploadedFiles, UseInterceptors,
+  Body, Controller, Get, Module, ParseUUIDPipe, Post, Query, UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
@@ -26,12 +26,21 @@ class RegistroDto {
 export class CartolasController {
   constructor(private readonly svc: CartolasService) {}
 
-  /** Lee los PDF y devuelve lo que encontró. No guarda nada: ni los archivos ni la ficha. */
+  /**
+   * Lee los PDF y devuelve lo que encontró. No guarda nada: ni los archivos ni la ficha.
+   * Con `?postulacionId=` compara la cartola con ese estudiante (nombre y RUT) en vez de buscarlo entre todos.
+   */
   @Post('leer')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(subida)
-  leer(@UploadedFiles() archivos: Express.Multer.File[]) {
-    return this.svc.leer(archivos);
+  leer(@UploadedFiles() archivos: Express.Multer.File[], @Query('postulacionId', new ParseUUIDPipe({ optional: true })) postulacionId?: string) {
+    return this.svc.leer(archivos, postulacionId);
+  }
+
+  /** Estado de la ficha RSH de cada estudiante de Preselección N°1 (qué tiene y si hay cartola leída). */
+  @Get('estado')
+  estado() {
+    return this.svc.listado();
   }
 
   @Get('estudiantes')

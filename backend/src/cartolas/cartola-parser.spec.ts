@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import * as path from 'path';
 import { claveNombre, cuerpoRut, fechaIso, leerCartola, limpiarTexto, rutDelArchivo } from './cartola-parser';
-import { emparejar, Postulante, prepararPostulante } from './emparejar';
+import { buscarIntegrante, emparejar, Postulante, prepararPostulante, rutTapado } from './emparejar';
 import { extraerTexto, PdfIlegibleError } from './lector-pdf';
 
 // El PDF de ejemplo es INVENTADO (nombres y RUT ficticios) pero con el mismo diseño que una cartola real.
@@ -145,5 +145,35 @@ describe('emparejar (cartola con RUT tapado)', () => {
 
   it('un archivo que no es PDF da un error legible', async () => {
     await expect(extraerTexto(Buffer.from('esto no es un pdf'))).rejects.toBeInstanceOf(PdfIlegibleError);
+  });
+});
+
+describe('buscarIntegrante y rutTapado (comparar la cartola con un estudiante)', () => {
+  const integrantes = [
+    { clave: claveNombre('Carlos Ernesto Prueba Ejemplo'), rutParcial: '21111', nombre: 'Carlos Ernesto Prueba Ejemplo' },
+    { clave: claveNombre('Estudiante Demo Prueba Ejemplo'), rutParcial: '23333', nombre: 'Estudiante Demo Prueba Ejemplo' },
+  ];
+  const estudiante = (rut: string | null) => prepararPostulante({ id: 'a', nombres: 'Estudiante Demo', apellido_paterno: 'Prueba', apellido_materno: 'Ejemplo', rut });
+
+  it('devuelve el nombre tal como está en la cartola y cómo se reconoció', () => {
+    const m = buscarIntegrante(estudiante(null), integrantes);
+    expect(m?.por).toBe('NOMBRE');
+    expect(m?.integrante.nombre).toBe('Estudiante Demo Prueba Ejemplo');
+    expect(rutTapado(m?.integrante.rutParcial)).toBe('23.333.XXX-X');
+  });
+  it('si el RUT cargado no calza con el de la cartola, no lo reconoce (homónimo)', () => {
+    expect(buscarIntegrante(estudiante('9.999.999-9'), integrantes)).toBeNull();
+    expect(buscarIntegrante({ ...estudiante('9.999.999-9'), rut: null }, integrantes)?.integrante.rutParcial).toBe('23333');
+  });
+  it('con RUT cargado que calza, lo reconoce', () => {
+    expect(buscarIntegrante(estudiante('23.333.444-5'), integrantes)?.por).toBe('NOMBRE');
+  });
+  it('rutTapado arma el formato de la cartola y devuelve null si no hay RUT', () => {
+    expect(rutTapado('4553')).toBe('4.553.XXX-X');
+    expect(rutTapado(null)).toBeNull();
+  });
+  it('el lector guarda el nombre de cada integrante', () => {
+    const c = leerCartola(TEXTO_REAL);
+    expect(c.integrantes.every((i) => !!i.nombre)).toBe(true);
   });
 });
