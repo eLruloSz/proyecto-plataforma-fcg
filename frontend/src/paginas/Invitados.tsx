@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, Confirmacion, Encuentro, Invitado } from '../api';
 import { useProceso } from '../Layout';
 import { ImportarContactos } from './ImportarContactos';
-import { Cargando, DesplazamientoDoble, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
+import { Cargando, DesplazamientoDoble, ErrorCarga, Etiqueta, fecha, Icono, Modal, nota, useAviso, Vacio } from '../ui';
 
 function useActualizar() {
   const qc = useQueryClient();
@@ -141,8 +141,8 @@ export function Invitados() {
           )}
         </div>
         <div className="flex gap-2">
-          <button className="btn-secundario" onClick={() => setImportando(true)} title="Cargar email, teléfono y RUT desde el Excel de Microsoft Forms">
-            Importar respuestas del formulario
+          <button className="btn-excel" onClick={() => setImportando(true)} title="Cargar email, teléfono y RUT desde el Excel de Microsoft Forms">
+            <Icono tipo="carpeta" /> Subir respuestas del formulario (Excel)
           </button>
           <input className="input w-56" placeholder="Buscar por nombre o Id…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
           <select className="input w-auto max-w-[260px]" value={liceoId} onChange={(e) => setLiceoId(e.target.value)} aria-label="Filtrar por liceo">

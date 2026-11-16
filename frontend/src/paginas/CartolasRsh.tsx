@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { DATOS_DE_CARTOLA, datosFaltantes } from '../cartolas';
-import { Cargando, Caja, ErrorCarga, Etiqueta, fecha, Vacio } from '../ui';
+import { tipoEtapa, useEtapa } from '../etapa';
+import { Cargando, Caja, ErrorCarga, Etiqueta, fecha, Icono, Vacio } from '../ui';
 import { CargarRsh, EstudianteRsh } from './CargarRsh';
 
 /**
@@ -45,6 +46,8 @@ const TEXTO_FILTRO: Record<Filtro, string> = {
 
 export function CartolasRsh() {
   const [params, setParams] = useSearchParams();
+  const { vista } = useEtapa();
+  const volverA = vista && tipoEtapa(vista) === 'PRESELECCION' ? `/avance/${vista.id}` : '/avance';
   const { data, isLoading, error } = useQuery({ queryKey: ['cartolas', 'estado'], queryFn: () => api.get<Estado>('/cartolas/estado') });
   const [busca, setBusca] = useState('');
   const [liceo, setLiceo] = useState('');
@@ -89,8 +92,9 @@ export function CartolasRsh() {
           <p className="text-sm text-gray-500">Qué estudiantes ya tienen su cartola del Registro Social de Hogares cargada. Elige a quién cargarle los datos.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link className="btn-secundario" to="/cartolas/masiva" title="Subir varias cartolas (PDF) a la vez: el sistema reconoce a cada estudiante por su nombre">Carga masiva (varios PDF)</Link>
-          <Link className="btn-secundario" to="/avance">Volver a Resultados</Link>
+          <Link className="btn-pdf" to="/cartolas/masiva" title="Subir varias cartolas (PDF) a la vez: el sistema reconoce a cada estudiante por su nombre"><Icono tipo="carpeta" /> Carga masiva (varios PDF)</Link>
+          {/* Lleva a «Postulantes y ranking» de esta etapa (con su ruta completa, para que el menú lo marque). */}
+          <Link className="btn-secundario" to={volverA}>Volver a Postulantes y ranking</Link>
         </div>
       </div>
 

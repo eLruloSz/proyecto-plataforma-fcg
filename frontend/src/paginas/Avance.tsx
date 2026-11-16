@@ -7,7 +7,7 @@ import { etiquetaEntrevista, tipoEtapa, useEtapa } from '../etapa';
 import { TerminarEtapa } from './TerminarEtapa';
 import { FechasEncuentro, fechaEncuentro, InscribirEnBloque, RegistrarAsistencia, useEncuentros } from './Encuentro';
 import { ImportarContactos } from './ImportarContactos';
-import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nota, useAviso, Vacio } from '../ui';
+import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Icono, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
 import { useSesion } from '../sesion';
 import { CeldaFicha, CeldaLugar, CeldasPuntajes, COLUMNAS_RANKING, EncabezadoLugar, EncabezadosPuntajes, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
@@ -318,8 +318,8 @@ export function Avance() {
       <div className="tarjeta flex flex-wrap items-center gap-2 bg-gray-50 px-4 py-3">
         <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Herramientas</span>
         {muestraAcepta && (
-          <button className="btn-secundario" onClick={() => setImportando(true)}
-            title="Excel de Microsoft Forms: llena “Aceptó postular” y los datos de contacto">Importar respuestas del formulario (Excel)</button>
+          <button className="btn-excel" onClick={() => setImportando(true)}
+            title="Excel de Microsoft Forms: llena “Aceptó postular” y los datos de contacto"><Icono tipo="carpeta" /> Subir respuestas del formulario (Excel)</button>
         )}
         {esEncuentro && (
           <button className="btn-secundario" disabled={!encuentros?.length} onClick={() => setInscribiendo(true)}
@@ -327,7 +327,7 @@ export function Avance() {
         )}
         {esPre && (
           <>
-          <button className="btn-secundario" onClick={() => setSubiendoRanking(true)}>{ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
+          <button className={ranking?.carga ? 'btn-excel-suave' : 'btn-excel'} onClick={() => setSubiendoRanking(true)}><Icono tipo="carpeta" /> {ranking?.carga ? 'Reemplazar ranking' : 'Subir ranking (Excel)'}</button>
           <Link className="btn-secundario" to="/cartolas" title="Qué estudiantes tienen su cartola RSH cargada; cargar una a una o varias a la vez">Cartolas RSH</Link>
           </>
         )}
@@ -491,7 +491,7 @@ export function Avance() {
                           title={`Pauta completada de la entrevista (${pc.etapa}), subida ${fecha(pc.subido_en)}`}
                           onClick={() => api.descargar(`/entrevistas/${pc.etapa_id}/estudiantes/${f.id}/pauta-completada`, `Pauta completada ${f.codigo} ${f.apellido_paterno} ${f.nombres}.docx`)
                             .catch((err: Error) => avisar(err.message, 'error'))}>
-                          {etiquetaEntrevista(pc.etapa)}
+                          <Icono tipo="bajar" /> {etiquetaEntrevista(pc.etapa)}
                         </button>
                       ))}
                     </td>
@@ -635,7 +635,7 @@ function BotonExcel({ etapaId, nombre }: { etapaId: string; nombre: string }) {
   return (
     <button className="btn-excel" disabled={bajando} onClick={bajar}
       title="Excel con los estudiantes de esta etapa y los datos hasta aquí, más el Listado Final de Invitados">
-      {bajando ? 'Preparando…' : '⬇ Exportar a Excel'}
+      {bajando ? 'Preparando…' : <><Icono tipo="bajar" /> Exportar a Excel</>}
     </button>
   );
 }

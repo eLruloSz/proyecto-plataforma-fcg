@@ -1,10 +1,9 @@
 import { Body, Controller, Get, HttpCode, Module, Param, ParseUUIDPipe, Post, Put, StreamableFile } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { APRECIACIONES, Apreciacion, SeleccionService } from './seleccion.service';
 import { Usuario, UsuarioSesion } from '../auth/public.decorator';
 import { AvanceModule } from '../avance/avance.module';
-import { ComunicacionModule } from '../comunicacion/comunicacion.module';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 /** Cabecera de descarga que admite tildes y ñ en el nombre. */
@@ -20,11 +19,6 @@ class DecisionDto {
 class NotasDto {
   @ValidateIf((o) => o.notas !== null) @IsString() @MaxLength(4000) notas: string | null;
 }
-class EnviarDirectivosDto {
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @IsEmail({}, { each: true }) para: string[];
-  @IsOptional() @IsString() @MaxLength(2000) mensaje?: string;
-}
-
 @ApiTags('seleccion')
 @ApiBearerAuth()
 @Controller('seleccion')
@@ -44,16 +38,14 @@ export class SeleccionController {
     return new StreamableFile(r.buffer, { type: XLSX, disposition: adjunto(r.nombre) });
   }
 
-  /** Destinatarios sugeridos para el correo a la dirección: las cuentas de solo lectura activas. */
-  @Get(':etapaId/directivos')
-  directivos() {
-    return this.svc.directivos();
-  }
-
-  @Post(':etapaId/enviar-directivos')
+  /**
+   * Guarda el Excel como archivo y devuelve su id: «Enviar a los directivos» lo adjunta en un correo nuevo
+   * de Comunicación (que es donde se revisan los destinatarios y se envía).
+   */
+  @Post(':etapaId/excel-adjunto')
   @HttpCode(200)
-  enviar(@Param('etapaId', ParseUUIDPipe) etapaId: string, @Body() dto: EnviarDirectivosDto, @Usuario() u: UsuarioSesion) {
-    return this.svc.enviarADirectivos(etapaId, dto.para, dto.mensaje, u);
+  excelAdjunto(@Param('etapaId', ParseUUIDPipe) etapaId: string) {
+    return this.svc.excelComoAdjunto(etapaId);
   }
 
   @Post(':etapaId/aplicar-sugerencias')
@@ -91,5 +83,5 @@ export class SeleccionController {
   }
 }
 
-@Module({ imports: [AvanceModule, ComunicacionModule], controllers: [SeleccionController], providers: [SeleccionService] })
+@Module({ imports: [AvanceModule], controllers: [SeleccionController], providers: [SeleccionService] })
 export class SeleccionModule {}

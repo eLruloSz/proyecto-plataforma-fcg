@@ -1,17 +1,18 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, FichaPostulacion } from '../api';
 import { etiquetaEntrevista, useEtapa } from '../etapa';
 import { subirPautaCompletada } from '../pautas';
 import { useSesion } from '../sesion';
-import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Modal, nombreCompleto, nota, useAviso, Vacio } from '../ui';
+import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Icono, Modal, nombreCompleto, nota, useAviso, Vacio } from '../ui';
 import { ESTADOS } from './Entrevistas';
 
 /**
  * Selección final (última etapa): cada finalista con todo lo que se sabe de él o ella y cómo le fue en las
- * entrevistas, para que quienes deciden la beca lo vean en un solo lugar. La decisión y su confirmación usan
- * lo mismo que "Resultados" (confirmar en la última etapa deja al estudiante como becario/a).
+ * entrevistas, para que quienes deciden la beca lo vean en un solo lugar. Aquí solo se decide: las marcas
+ * quedan en "Resultados", que es donde se confirma (confirmar en la última etapa deja al estudiante como
+ * becario/a) y desde donde se avisa a los estudiantes.
  */
 
 type Apreciacion = 'ACEPTARIA' | 'ACEPTARIA_CON_DUDAS' | 'NO_ACEPTARIA';
@@ -88,12 +89,12 @@ export function Seleccion() {
   // del filtro actual, las flechas no se pierden).
   const [abierto, setAbierto] = useState<string | null>(null);
   const [recorrido, setRecorrido] = useState<string[]>([]);
-  const [confirmando, setConfirmando] = useState(false);
-  const [enviando, setEnviando] = useState(false);
+  const [mandando, setMandando] = useState(false);
   const [marcadas, setMarcadas] = useState<string[]>([]); // para comparar (máximo 3)
   const [comparando, setComparando] = useState(false);
   const [bajandoExcel, setBajandoExcel] = useState(false);
 
+  const navegar = useNavigate();
   const refrescar = () => CLAVES.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const errorAviso = (e: Error) => avisar(e.message, 'error');
 
@@ -106,9 +107,10 @@ export function Seleccion() {
     onSuccess: (r) => { avisar(r.marcados ? `${r.marcados} marcados según su apreciación` : 'No había estudiantes nuevos para marcar', 'info'); refrescar(); },
     onError: errorAviso,
   });
-  const confirmar = useMutation({
-    mutationFn: () => api.post<{ pasan: number; noPasan: number }>(`/avance/${etapaId}/confirmar`, {}),
-    onSuccess: (r) => { avisar(`Confirmado: ${r.pasan} becarios, ${r.noPasan} no seleccionados`); setConfirmando(false); refrescar(); },
+  // «Enviar a los directivos»: se guarda el Excel y se abre Comunicación con el correo ya armado.
+  const prepararCorreo = useMutation({
+    mutationFn: () => api.post<{ id: string; nombre: string }>(`/seleccion/${etapaId}/excel-adjunto`, {}),
+    onSuccess: (a) => navegar(`/comunicacion?nuevo=1&proposito=INFORME_DIRECTIVOS&adjunto=${a.id}&adjuntoNombre=${encodeURIComponent(a.nombre)}`),
     onError: errorAviso,
   });
 
@@ -195,7 +197,7 @@ export function Seleccion() {
         <div className="tarjeta p-3"><div className="text-xl font-bold text-amber-700">{r.en_espera}</div><div className="text-xs text-gray-500">en lista de espera</div></div>
         <div className="tarjeta p-3"><div className="text-xl font-bold">{r.sin_decidir}</div><div className="text-xs text-gray-500">sin decidir <span className="text-red-700">· {r.marcados_no_pasa} no sel.</span></div></div>
       </div>
-      {sobreCupo && <Caja tono="amarillo">Hay más becas asignadas ({pasanTodos}) que el cupo ({r.cupo}). Revisa antes de confirmar.</Caja>}
+      {sobreCupo && <Caja tono="amarillo">Hay más becas asignadas ({pasanTodos}) que el cupo ({r.cupo}). Revísalo antes de mandar a Resultados.</Caja>}
       {r.cupos_libres !== null && r.cupos_libres > 0 && r.sin_decidir === 0 && pendientesDeConfirmar === 0 && (
         <Caja tono="azul">Quedan {r.cupos_libres} cupos sin asignar.</Caja>
       )}
@@ -207,8 +209,9 @@ export function Seleccion() {
               title="Marca “seleccionado” a quien la entrevista dice que aceptaría y “no seleccionado” a quien no aceptaría. Las marcas son provisorias y se pueden cambiar.">
               ✓ Marcar según apreciación ({sugeridos})
             </button>
-            <button className="btn-primario" disabled={!pendientesDeConfirmar} onClick={() => setConfirmando(true)}>
-              Confirmar selección ({pendientesDeConfirmar})
+            <button className="btn-primario" disabled={!pendientesDeConfirmar} onClick={() => setMandando(true)}
+              title="Las marcas pasan a Resultados, donde se confirman. Nada es definitivo hasta confirmar allá.">
+              Mandar a Resultados ({pendientesDeConfirmar})
             </button>
           </>
         )}
@@ -220,11 +223,16 @@ export function Seleccion() {
         <div className="ml-auto flex flex-wrap gap-2">
           <button className="btn-excel" disabled={bajandoExcel} onClick={bajarExcel}
             title="Excel con lo importante de cada finalista: ranking, notas, RSH, apreciación, observaciones y decisión">
-            {bajandoExcel ? 'Preparando…' : '⬇ Exportar a Excel'}
+            {bajandoExcel ? 'Preparando…' : <><Icono tipo="bajar" /> Exportar a Excel</>}
           </button>
-          {!soloLectura && <button className="btn-secundario" onClick={() => setEnviando(true)}>Enviar a los directivos</button>}
+          {!soloLectura && (
+            <button className="btn-secundario" disabled={prepararCorreo.isPending} onClick={() => prepararCorreo.mutate()}
+              title="Abre Comunicación con el Excel adjunto y una plantilla para los directivos">
+              {prepararCorreo.isPending ? 'Preparando…' : 'Enviar a los directivos'}
+            </button>
+          )}
         </div>
-        {!soloLectura && <p className="w-full text-xs text-gray-500">“Aceptaría con dudas” no se marca solo: lo decide una persona, caso por caso. Quien queda “en espera” no se confirma: sigue aquí por si se libera un cupo.</p>}
+        {!soloLectura && <p className="w-full text-xs text-gray-500">“Aceptaría con dudas” no se marca solo: lo decide una persona, caso por caso. Quien queda “en espera” no se confirma: sigue aquí por si se libera un cupo. La confirmación y el aviso a los estudiantes se hacen en Resultados.</p>}
       </div>
 
       {/* Búsqueda, filtros y orden */}
@@ -295,19 +303,17 @@ export function Seleccion() {
           onAbrir={(id) => { setComparando(false); abrirFicha(id); }} onMarcar={(f, decision) => marcar.mutate({ f, decision })} />
       )}
 
-      {enviando && <EnviarDirectivos etapaId={etapaId} resumen={`${pasanTodos}${r.cupo !== null ? ` de ${r.cupo}` : ''} becas asignadas`} onCerrar={() => setEnviando(false)} />}
-
-      {confirmando && (
-        <Modal titulo="Confirmar selección" onCerrar={() => setConfirmando(false)} ancho="max-w-md"
+      {mandando && (
+        <Modal titulo="Mandar a Resultados" onCerrar={() => setMandando(false)} ancho="max-w-md"
           pie={<>
-            <button className="btn-secundario" onClick={() => setConfirmando(false)}>Cancelar</button>
-            <button className="btn-primario" disabled={confirmar.isPending} onClick={() => confirmar.mutate()}>Confirmar</button>
+            <button className="btn-secundario" onClick={() => setMandando(false)}>Seguir aquí</button>
+            <button className="btn-primario" onClick={() => navegar(`/avance/${etapaId}`)}>Ir a Resultados</button>
           </>}>
           <div className="space-y-2 text-sm">
-            <p><strong>{r.marcados_pasa}</strong> quedarán como <strong>becarios/as</strong> y <strong>{r.marcados_no_pasa}</strong> saldrán del proceso.</p>
-            {sobreCupo && <p className="text-red-700">Ojo: con esto hay {pasanTodos} becas y el cupo es {r.cupo}.</p>}
-            {r.en_espera > 0 && <p><strong>{r.en_espera}</strong> en lista de espera siguen en esta etapa, sin confirmar.</p>}
-            <p className="text-gray-500">Después se puede deshacer uno por uno desde Resultados. El aviso del resultado se envía desde ahí.</p>
+            <p>Tus marcas ya están guardadas: <strong>{r.marcados_pasa}</strong> seleccionados/as y <strong>{r.marcados_no_pasa}</strong> no seleccionados/as.</p>
+            {sobreCupo && <p className="text-red-700">Ojo: hay {pasanTodos} becas asignadas y el cupo es {r.cupo}.</p>}
+            {r.en_espera > 0 && <p><strong>{r.en_espera}</strong> en lista de espera siguen aquí, sin confirmar.</p>}
+            <p className="text-gray-500">Todavía nada es definitivo: en Resultados se revisa, se confirma y se avisa a los estudiantes. Mientras tanto puedes volver a esta pantalla y cambiar lo que quieras.</p>
           </div>
         </Modal>
       )}
@@ -374,7 +380,7 @@ function FilaFinalista({ f, soloLectura, ocupado, comparar, sinCupoParaComparar,
           {f.entrevistas.map((e) => (
             <div key={e.etapa_id} className="flex items-center gap-1.5 text-xs">
               {e.pauta
-                ? <button className="btn-word btn-chico" onClick={() => bajar(e)} title={`Pauta completada de ${e.etapa} · subida ${fecha(e.pauta.subido_en)}`}>{etiquetaEntrevista(e.etapa)}</button>
+                ? <button className="btn-word btn-chico" onClick={() => bajar(e)} title={`Pauta completada de ${e.etapa} · subida ${fecha(e.pauta.subido_en)}`}><Icono tipo="bajar" /> {etiquetaEntrevista(e.etapa)}</button>
                 : <span className="text-gray-400" title={`Sin pauta completada de ${e.etapa}`}>{etiquetaEntrevista(e.etapa)} · sin Word</span>}
               {e.estado && <span className={`whitespace-nowrap rounded border px-1 py-0.5 text-[10px] ${ESTADOS[e.estado].chip}`}>{ESTADOS[e.estado].texto}</span>}
             </div>
@@ -427,13 +433,17 @@ function NotasComite({ f, etapaId, soloLectura, onCambio }: { f: Finalista; etap
   );
 }
 
+/** Línea fina de extremos redondeados para separar secciones. */
+function Separador() {
+  return <div className="my-5 h-[3px] w-full rounded-full bg-gray-200" role="separator" />;
+}
+
 function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onAnterior, onSiguiente, onCerrar, onCambio, onMarcar }: {
   f: Finalista; soloLectura: boolean; ocupado: boolean; etapaId: string; posicion: number | null; total: number;
   onAnterior: (() => void) | null; onSiguiente: (() => void) | null; onCerrar: () => void; onCambio: () => void; onMarcar: (d: Eleccion) => void;
 }) {
   const fi = f.ficha;
   const ap = apreciacionActual(f);
-  const dicho = f.entrevistas.filter((e) => e.apreciacion || e.observaciones);
 
   // Flechas del teclado para pasar de una ficha a otra (no se activan mientras se escribe).
   useEffect(() => {
@@ -448,7 +458,7 @@ function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onA
   }, [onAnterior, onSiguiente]);
 
   return (
-    <Modal titulo={nombreCompleto(f)} onCerrar={onCerrar} ancho="max-w-3xl"
+    <Modal titulo={nombreCompleto(f)} onCerrar={onCerrar} ancho="max-w-6xl"
       pie={<>
         <div className="mr-auto flex items-center gap-2">
           <button className="btn-secundario" disabled={!onAnterior} onClick={() => onAnterior?.()} title="Finalista anterior (flecha izquierda)">← Anterior</button>
@@ -457,11 +467,11 @@ function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onA
         </div>
         <button className="btn-secundario" onClick={onCerrar}>Cerrar</button>
       </>}>
-      <div className="space-y-5 text-sm">
-        <p className="-mt-1 text-xs text-gray-500">
+      <div className="text-sm">
+        <p className="-mt-1 mb-3 text-xs text-gray-500">
           <span className="font-mono text-gray-700">{f.codigo}</span> · {f.liceo}{f.comuna ? ` · ${f.comuna}` : ''}{f.curso ? ` · ${f.curso}` : ''}
         </p>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-5 py-3">
           <div className="text-center"><div className="text-xl font-bold">{f.ranking?.posicion ?? '—'}</div><div className="text-[10px] uppercase text-gray-400">ranking</div></div>
           {f.ranking?.puntaje_total != null && <div className="text-center"><div className="text-xl font-bold">{nota(f.ranking.puntaje_total)}</div><div className="text-[10px] uppercase text-gray-400">puntaje</div></div>}
           {f.promedio !== null && <div className="text-center"><div className="text-xl font-bold">{nota(f.promedio)}</div><div className="text-[10px] uppercase text-gray-400">promedio</div></div>}
@@ -472,64 +482,60 @@ function FichaFinalista({ f, soloLectura, ocupado, etapaId, posicion, total, onA
           <div className="ml-auto"><Decision f={f} soloLectura={soloLectura} ocupado={ocupado} onMarcar={onMarcar} /></div>
         </div>
 
-        {dicho.length > 0 && (
-          <section className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-            <h3 className="subtitulo mb-2">Lo que se vio en las entrevistas</h3>
-            <div className="space-y-2.5">
-              {dicho.map((e) => (
-                <div key={e.etapa_id}>
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <strong className="text-gray-800">{etiquetaEntrevista(e.etapa)}</strong>
-                    {e.apreciacion && <span className={`rounded border px-1.5 py-0.5 ${APRECIACIONES[e.apreciacion].chip}`}>{APRECIACIONES[e.apreciacion].texto}</span>}
-                  </div>
-                  {e.observaciones && <p className="mt-1 whitespace-pre-line text-sm text-gray-800">{e.observaciones}</p>}
-                </div>
-              ))}
+        {/* A la izquierda, quién es; a la derecha, cómo le fue en las entrevistas. */}
+        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+          <div>
+            <section>
+              <h3 className="subtitulo mb-3">Datos</h3>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                <Dato t="Id" v={<span className="font-mono">{f.codigo}</span>} />
+                <Dato t="Establecimiento" v={`${f.liceo_codigo}. ${f.liceo}`} />
+                <Dato t="Comuna" v={f.comuna} />
+                <Dato t="Curso" v={f.curso} />
+                <Dato t="Promedio" v={f.promedio !== null ? nota(f.promedio) : null} />
+                <Dato t="Posición en el curso" v={f.posicion_curso} />
+                <Dato t="Correo" v={f.email} />
+                <Dato t="Teléfono" v={f.telefono} />
+                <Dato t="Posición en el ranking" v={f.ranking?.posicion} />
+              </dl>
+            </section>
+
+            {fi && (
+              <>
+                <Separador />
+                <section>
+                  <h3 className="subtitulo mb-3">Situación familiar (ficha RSH)</h3>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                    <Dato t="Tramo RSH" v={fi.rsh_pendiente ? 'Pendiente' : fi.tramo_rsh !== null ? `${fi.tramo_rsh}%` : null} />
+                    <Dato t="Personas del hogar" v={SI_NO(fi.personas_hogar)} />
+                    <Dato t="Ingresos del hogar" v={fi.ingresos_hogar} />
+                    <Dato t="Menores de 18" v={SI_NO(fi.menores_18)} />
+                    <Dato t="Mayores de 60" v={SI_NO(fi.mayores_60)} />
+                    <Dato t="Con discapacidad" v={SI_NO(fi.con_discapacidad)} />
+                    <Dato t="Con dependencia" v={SI_NO(fi.con_dependencia)} />
+                    <Dato t="Con NEE" v={SI_NO(fi.con_nee)} />
+                  </dl>
+                  {fi.observaciones && <p className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">{fi.observaciones}</p>}
+                </section>
+              </>
+            )}
+
+            {(!soloLectura || f.notas) && (
+              <>
+                <Separador />
+                <NotasComite f={f} etapaId={etapaId} soloLectura={soloLectura} onCambio={onCambio} />
+              </>
+            )}
+          </div>
+
+          <section className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+            <h3 className="subtitulo mb-3">Entrevistas</h3>
+            {f.entrevistas.length === 0 && <p className="text-xs text-gray-500">Todavía no tiene entrevistas registradas.</p>}
+            <div className="space-y-3">
+              {f.entrevistas.map((e) => <BloqueEntrevista key={`${f.id}:${e.etapa_id}`} f={f} e={e} soloLectura={soloLectura} onCambio={onCambio} />)}
             </div>
           </section>
-        )}
-
-        <NotasComite f={f} etapaId={etapaId} soloLectura={soloLectura} onCambio={onCambio} />
-
-        <section>
-          <h3 className="subtitulo mb-2">Datos</h3>
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-            <Dato t="Id" v={<span className="font-mono">{f.codigo}</span>} />
-            <Dato t="Establecimiento" v={`${f.liceo_codigo}. ${f.liceo}`} />
-            <Dato t="Comuna" v={f.comuna} />
-            <Dato t="Curso" v={f.curso} />
-            <Dato t="Promedio" v={f.promedio !== null ? nota(f.promedio) : null} />
-            <Dato t="Posición en el curso" v={f.posicion_curso} />
-            <Dato t="Correo" v={f.email} />
-            <Dato t="Teléfono" v={f.telefono} />
-            <Dato t="Posición en el ranking" v={f.ranking?.posicion} />
-          </dl>
-        </section>
-
-        {fi && (
-          <section>
-            <h3 className="subtitulo mb-2">Situación familiar (ficha RSH)</h3>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-              <Dato t="Tramo RSH" v={fi.rsh_pendiente ? 'Pendiente' : fi.tramo_rsh !== null ? `${fi.tramo_rsh}%` : null} />
-              <Dato t="Personas del hogar" v={SI_NO(fi.personas_hogar)} />
-              <Dato t="Ingresos del hogar" v={fi.ingresos_hogar} />
-              <Dato t="Menores de 18" v={SI_NO(fi.menores_18)} />
-              <Dato t="Mayores de 60" v={SI_NO(fi.mayores_60)} />
-              <Dato t="Con discapacidad" v={SI_NO(fi.con_discapacidad)} />
-              <Dato t="Con dependencia" v={SI_NO(fi.con_dependencia)} />
-              <Dato t="Con NEE" v={SI_NO(fi.con_nee)} />
-            </dl>
-            {fi.observaciones && <p className="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-700">{fi.observaciones}</p>}
-          </section>
-        )}
-
-        <section>
-          <h3 className="subtitulo mb-2">Entrevistas</h3>
-          {f.entrevistas.length === 0 && <p className="text-xs text-gray-500">Todavía no tiene entrevistas registradas.</p>}
-          <div className="space-y-3">
-            {f.entrevistas.map((e) => <BloqueEntrevista key={`${f.id}:${e.etapa_id}`} f={f} e={e} soloLectura={soloLectura} onCambio={onCambio} />)}
-          </div>
-        </section>
+        </div>
       </div>
     </Modal>
   );
@@ -659,69 +665,6 @@ function Comparador({ finalistas, soloLectura, ocupado, onCerrar, onAbrir, onMar
   );
 }
 
-// ---------------------------------------------------------------------------------------------------------
-// Correo a los directivos
-// ---------------------------------------------------------------------------------------------------------
-
-function EnviarDirectivos({ etapaId, resumen, onCerrar }: { etapaId: string; resumen: string; onCerrar: () => void }) {
-  const avisar = useAviso();
-  const { data, isLoading } = useQuery({
-    queryKey: ['seleccion-directivos', etapaId], queryFn: () => api.get<{ nombre: string; email: string }[]>(`/seleccion/${etapaId}/directivos`),
-  });
-  const [quitados, setQuitados] = useState<Set<string>>(new Set());
-  const [extra, setExtra] = useState('');
-  const [mensaje, setMensaje] = useState('');
-  const directivos = data ?? [];
-  const adicionales = [...new Set(extra.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
-  const invalidos = adicionales.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
-  const para = [...new Set([...directivos.filter((d) => !quitados.has(d.email)).map((d) => d.email.toLowerCase()), ...adicionales.filter((x) => !invalidos.includes(x))])];
-
-  const enviar = useMutation({
-    mutationFn: () => api.post<{ enviados: number; simulacion: boolean }>(`/seleccion/${etapaId}/enviar-directivos`, { para, mensaje: mensaje.trim() || undefined }),
-    onSuccess: (r) => { avisar(`Correo enviado a ${r.enviados} ${r.enviados === 1 ? 'persona' : 'personas'}${r.simulacion ? ' (modo de prueba: no salió realmente)' : ''}`); onCerrar(); },
-    onError: (e: Error) => avisar(e.message, 'error'),
-  });
-
-  return (
-    <Modal titulo="Enviar a los directivos" onCerrar={onCerrar} ancho="max-w-lg"
-      pie={<>
-        <button className="btn-secundario" onClick={onCerrar}>Cancelar</button>
-        <button className="btn-primario" disabled={!para.length || invalidos.length > 0 || enviar.isPending} onClick={() => enviar.mutate()}>
-          {enviar.isPending ? 'Enviando…' : `Enviar a ${para.length} ${para.length === 1 ? 'persona' : 'personas'}`}
-        </button>
-      </>}>
-      <div className="space-y-4 text-sm">
-        <p className="text-gray-600">Se envía un correo con el Excel adjunto: lo importante de cada finalista y su decisión actual ({resumen}). No incluye los puntajes.</p>
-        <div>
-          <span className="label">Cuentas de solo lectura</span>
-          {isLoading ? <Cargando /> : directivos.length === 0 ? <p className="text-xs text-gray-500">No hay cuentas de solo lectura. Escribe los correos abajo.</p> : (
-            <ul className="space-y-1">
-              {directivos.map((d) => (
-                <li key={d.email}>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" className="h-4 w-4 accent-marca-700" checked={!quitados.has(d.email)}
-                      onChange={() => setQuitados((q) => { const n = new Set(q); if (n.has(d.email)) n.delete(d.email); else n.add(d.email); return n; })} />
-                    <span>{d.nombre}</span><span className="text-xs text-gray-500">{d.email}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <label className="block">
-          <span className="label">Otros correos (separados por coma o espacio)</span>
-          <textarea rows={2} className="input" value={extra} placeholder="direccion@fundacion.cl, otra@fundacion.cl" onChange={(ev) => setExtra(ev.target.value)} />
-          {invalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {invalidos.join(', ')}</span>}
-        </label>
-        <label className="block">
-          <span className="label">Mensaje (opcional)</span>
-          <textarea rows={3} className="input" value={mensaje} maxLength={2000} placeholder="Si lo dejas vacío, va un texto breve estándar." onChange={(ev) => setMensaje(ev.target.value)} />
-        </label>
-      </div>
-    </Modal>
-  );
-}
-
 function BloqueEntrevista({ f, e, soloLectura, onCambio }: { f: Finalista; e: EntrevistaFinalista; soloLectura: boolean; onCambio: () => void }) {
   const avisar = useAviso();
   const [apreciacion, setApreciacion] = useState<Apreciacion | null>(e.apreciacion);
@@ -768,12 +711,12 @@ function BloqueEntrevista({ f, e, soloLectura, onCambio }: { f: Finalista; e: En
         {e.fecha_hora && <span className="text-xs text-gray-500">{fecha(e.fecha_hora)}</span>}
         <span className="ml-auto flex flex-wrap items-center gap-1.5">
           {e.pauta
-            ? <button className="btn-word btn-chico" disabled={bajando} onClick={bajar} title={`Subida el ${fecha(e.pauta.subido_en)}`}>{bajando ? 'Preparando…' : '⬇ Pauta completada (Word)'}</button>
+            ? <button className="btn-word btn-chico" disabled={bajando} onClick={bajar} title={`Subida el ${fecha(e.pauta.subido_en)}`}>{bajando ? 'Preparando…' : <><Icono tipo="bajar" /> Pauta completada (Word)</>}</button>
             : <span className="text-xs text-gray-400">Sin pauta completada</span>}
           {!soloLectura && (
-            <button className="btn-secundario btn-chico" disabled={subiendo} onClick={() => entrada.current?.click()}
+            <button className="btn-word-suave btn-chico" disabled={subiendo} onClick={() => entrada.current?.click()}
               title="Sube el Word de la pauta ya rellenado después de la entrevista">
-              {subiendo ? 'Subiendo…' : e.pauta ? '⬆ Reemplazar' : '⬆ Subir Word completado'}
+              {subiendo ? 'Subiendo…' : <><Icono tipo="carpeta" /> {e.pauta ? 'Reemplazar' : 'Subir Word completado'}</>}
             </button>
           )}
         </span>

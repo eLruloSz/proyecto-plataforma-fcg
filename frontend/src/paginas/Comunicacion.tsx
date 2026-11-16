@@ -209,6 +209,7 @@ function plantillaSugerida(plantillas: Plantilla[], proposito: string | null, ti
 /** Grupo al que va un correo hecho desde una plantilla. */
 function grupoDePlantilla(p: Plantilla): string {
   if (/\(postulantes\)\s*$/i.test(p.nombre)) return 'POSTULANTES';
+  if (p.proposito === 'INFORME_DIRECTIVOS') return 'DIRECTIVOS';
   if (/\(directivos\)\s*$/i.test(p.nombre)) return 'DIRECTORES';
   if (/\(contrapartes\)\s*$/i.test(p.nombre)) return 'CONTRAPARTES';
   // Correos con la lista de estudiantes de cada liceo van a las contrapartes.
@@ -244,11 +245,16 @@ export function Comunicacion() {
     const plantilla = params.get('plantilla')
       ? plantillas?.find((p) => p.id === params.get('plantilla'))
       : sugerir ? plantillaSugerida(plantillas ?? [], params.get('proposito'), filtroEtapa?.tipo, etapaOrden) : undefined;
-    // Desde una plantilla, se arma un "envío base" con su contenido.
-    const desdePlantilla = plantilla ? {
-      id: '', grupo: liceo ? 'LICEO' : filtroEtapa ? 'POSTULANTES' : grupoDePlantilla(plantilla), proposito: plantilla.proposito,
-      asunto: plantilla.asunto, cuerpo: plantilla.cuerpo, plantilla_id: plantilla.id,
-      adjuntos: plantilla.adjuntos.map((a) => ({ id: a.id, nombre_original: a.nombre, tamano_bytes: a.tamano })),
+    // Archivo que viene de otra pantalla (por ejemplo, el Excel de la selección final): va adjunto al correo.
+    const adjuntoExterno = params.get('adjunto')
+      ? [{ id: params.get('adjunto')!, nombre_original: params.get('adjuntoNombre') ?? 'Archivo adjunto', tamano_bytes: 0 }] : [];
+    const propositoUrl = params.get('proposito');
+    // Desde una plantilla (o un archivo adjunto), se arma un "envío base" con su contenido.
+    const desdePlantilla = plantilla || adjuntoExterno.length ? {
+      id: '', grupo: liceo ? 'LICEO' : filtroEtapa ? 'POSTULANTES' : plantilla ? grupoDePlantilla(plantilla) : propositoUrl === 'INFORME_DIRECTIVOS' ? 'DIRECTIVOS' : 'CONTRAPARTES',
+      proposito: plantilla?.proposito ?? propositoUrl ?? 'OTRO',
+      asunto: plantilla?.asunto ?? '', cuerpo: plantilla?.cuerpo ?? '', plantilla_id: plantilla?.id ?? '',
+      adjuntos: [...(plantilla?.adjuntos.map((a) => ({ id: a.id, nombre_original: a.nombre, tamano_bytes: a.tamano })) ?? []), ...adjuntoExterno],
     } as unknown as EnvioDetalle : undefined;
     if (params.get('plantilla') && !plantillas) return <Cargando />;
     return (

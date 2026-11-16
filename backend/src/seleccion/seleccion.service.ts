@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AvanceService } from '../avance/avance.service';
-import { MailerService } from '../comunicacion/mailer.service';
 import { agregarHoja, Columna, crearLibro, nombreArchivo } from '../exportacion/excel-util';
+import { ArchivosService } from '../common/archivos.service';
 import { AuditoriaService } from '../common/auditoria.service';
 import { ProcesoActualService } from '../common/proceso-actual.service';
 
@@ -39,7 +39,7 @@ export class SeleccionService {
     private readonly proceso: ProcesoActualService,
     private readonly auditoria: AuditoriaService,
     private readonly avance: AvanceService,
-    private readonly mailer: MailerService,
+    private readonly archivos: ArchivosService,
   ) {}
 
   /** Solo la etapa de selección final tiene esta pantalla. */
@@ -266,32 +266,13 @@ export class SeleccionService {
     };
   }
 
-  /** Cuentas de solo lectura activas (los directivos): son los destinatarios sugeridos. */
-  async directivos() {
-    return this.ds.query(`SELECT nombre_completo AS nombre, email FROM usuarios WHERE rol = 'LECTOR' AND activo AND email IS NOT NULL ORDER BY nombre_completo`);
-  }
-
-  async enviarADirectivos(etapaId: string, para: string[], mensaje: string | undefined, u: { id: string; email: string; nombre: string }) {
+  /**
+   * Deja el Excel guardado como archivo para adjuntarlo en un correo desde Comunicación. Es una copia del
+   * momento: si después cambia una decisión, se vuelve a generar al tocar «Enviar a los directivos».
+   */
+  async excelComoAdjunto(etapaId: string) {
     const x = await this.excelDireccion(etapaId);
-    const unicos = [...new Set(para.map((c) => c.trim().toLowerCase()).filter(Boolean))];
-    if (!unicos.length) throw new BadRequestException('Falta al menos un destinatario.');
-    const r = x.resumen;
-    const texto = [
-      'Estimados:',
-      '',
-      mensaje?.trim() || 'Les enviamos el resumen de los finalistas de la Beca Carmen Goudie para la decisión final.',
-      '',
-      `Finalistas: ${r.total}.${r.cupo !== null ? ` Cupo: ${r.cupo}. Becas asignadas hasta ahora: ${r.asignadas}.` : ''}${r.espera ? ` En lista de espera: ${r.espera}.` : ''}`,
-      'Adjuntamos el Excel con la información principal de cada estudiante.',
-      '',
-      'Saludos,',
-      u.nombre,
-    ].join('\n');
-    await this.mailer.enviar({
-      para: unicos.join(', '), asunto: 'Beca Carmen Goudie — finalistas para la selección final', texto, responderA: u.email,
-      adjuntos: [{ nombre: x.nombre, contenido: x.buffer, tipo: XLSX }],
-    });
-    await this.auditoria.registrar(u.id, 'ENVIAR_RESUMEN_DIRECTIVOS', 'etapas', etapaId, { destinatarios: unicos.length });
-    return { enviados: unicos.length, simulacion: this.mailer.modoSimulacion };
+    const a = await this.archivos.guardar({ originalname: x.nombre, buffer: x.buffer, mimetype: XLSX, size: x.buffer.length } as Express.Multer.File);
+    return { id: a.id as string, nombre: a.nombre_original as string };
   }
 }

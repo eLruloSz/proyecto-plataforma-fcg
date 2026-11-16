@@ -40,8 +40,8 @@ export function menuDeEtapa(e: Etapa): ItemMenu[] {
       return [{ a: avance, texto: 'Encuentro online' }];
     case 'PRESELECCION':
       return [
-        { a: avance, texto: 'Postulantes y ranking' },
         { a: '/cartolas', texto: 'Cartolas RSH', soloEquipo: true },
+        { a: avance, texto: 'Postulantes y ranking' },
       ];
     case 'ENTREVISTA':
       return [
@@ -60,7 +60,7 @@ export const PROPOSITOS_DE_ETAPA: Record<TipoEtapa, string[]> = {
   INVITACION: ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AGRADECIMIENTO'],
   ENCUENTRO: ['OTRO', 'AVISO_RESULTADO'],
   PRESELECCION: ['OTRO', 'AVISO_RESULTADO', 'INFORME_LICEO'],
-  ENTREVISTA: ['AVISO_RESULTADO', 'INFORME_LICEO', 'OTRO'],
+  ENTREVISTA: ['AVISO_RESULTADO', 'INFORME_DIRECTIVOS', 'INFORME_LICEO', 'OTRO'],
   GENERAL: ['AVISO_RESULTADO', 'OTRO'],
 };
 

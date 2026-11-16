@@ -4,7 +4,7 @@ import { api } from '../api';
 import {
   CAMPOS_FICHA, compararNombre, DatosFicha, ResultadoCartola, valorTexto,
 } from '../cartolas';
-import { Caja, Etiqueta, Modal, useAviso } from '../ui';
+import { Caja, Etiqueta, Icono, Modal, useAviso } from '../ui';
 
 /**
  * Cargar el RSH de UN estudiante ya elegido: desde la cartola (PDF) o digitando los datos a mano.
@@ -162,7 +162,7 @@ export function CargarRsh({ e, onCerrar }: { e: EstudianteRsh; onCerrar: () => v
                 <input ref={entrada} type="file" hidden accept=".pdf,application/pdf"
                   onChange={(ev) => { const a = ev.target.files?.[0]; ev.target.value = ''; if (a) leerPdf(a); }} />
                 <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-gray-300 px-4 py-6">
-                  <button className="btn-primario" disabled={leyendo} onClick={() => entrada.current?.click()}>{leyendo ? 'Leyendo la cartola…' : 'Elegir cartola (PDF)'}</button>
+                  <button className="btn-pdf" disabled={leyendo} onClick={() => entrada.current?.click()}>{leyendo ? 'Leyendo la cartola…' : <><Icono tipo="carpeta" /> Elegir cartola (PDF)</>}</button>
                   <span className="text-xs text-gray-400">Un solo archivo. Si tienes varias cartolas, usa «Carga masiva».</span>
                 </div>
                 {errorPdf && <Caja tono="rojo">{errorPdf} <button className="underline" onClick={() => setModo('manual')}>Digitar a mano</button></Caja>}

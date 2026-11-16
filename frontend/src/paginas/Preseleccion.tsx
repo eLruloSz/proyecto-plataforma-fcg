@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, CargaRanking, FichaPostulacion, PreviaRanking, VistaAvance } from '../api';
-import { Caja, Etiqueta, fecha, Modal, useAviso } from '../ui';
+import { Caja, Etiqueta, fecha, Icono, Modal, useAviso } from '../ui';
 
 type Fila = VistaAvance['estudiantes'][number];
 
@@ -301,8 +301,8 @@ export function SubirRanking({ onCerrar }: { onCerrar: () => void }) {
             Si el archivo tiene varias pestañas de ponderación, después eliges cuál cargar.</p>
           <input ref={input} type="file" accept=".xlsx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) { setArchivo(f); leer.mutate({ f }); } }} />
-          <button className="btn-primario" disabled={leer.isPending} onClick={() => input.current?.click()}>
-            {leer.isPending ? 'Leyendo archivo…' : 'Elegir Excel del ranking'}
+          <button className="btn-excel" disabled={leer.isPending} onClick={() => input.current?.click()}>
+            {leer.isPending ? 'Leyendo archivo…' : <><Icono tipo="carpeta" /> Elegir Excel del ranking</>}
           </button>
         </div>
       </Modal>

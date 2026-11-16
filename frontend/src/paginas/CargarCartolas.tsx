@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { DatosFicha, Estudiante, ResultadoCartola as Resultado, Verificacion } from '../cartolas';
-import { Caja, Etiqueta, fecha, useAviso } from '../ui';
+import { Caja, Etiqueta, fecha, Icono, useAviso } from '../ui';
 
 /**
  * Carga de cartolas RSH (PDF): el sistema lee cada una, muestra lo que encontró y, si la persona del equipo
@@ -105,8 +105,8 @@ export function CargarCartolas() {
       <div className="tarjeta flex flex-wrap items-center gap-3 p-3">
         <input ref={entrada} type="file" hidden multiple accept=".pdf,application/pdf"
           onChange={(e) => { const a = Array.from(e.target.files ?? []); e.target.value = ''; if (a.length) leer(a); }} />
-        <button className="btn-primario" disabled={!!leyendo || guardando} onClick={() => entrada.current?.click()}>
-          {leyendo ? `Leyendo… ${leyendo.hechos} de ${leyendo.total}` : 'Subir cartolas (PDF)'}
+        <button className="btn-pdf" disabled={!!leyendo || guardando} onClick={() => entrada.current?.click()}>
+          {leyendo ? `Leyendo… ${leyendo.hechos} de ${leyendo.total}` : <><Icono tipo="carpeta" /> Subir cartolas (PDF)</>}
         </button>
         <button className="btn-primario" disabled={!elegibles.length || guardando || !!leyendo} onClick={guardar}>
           {guardando ? 'Guardando…' : `Guardar en la ficha (${elegibles.length})`}

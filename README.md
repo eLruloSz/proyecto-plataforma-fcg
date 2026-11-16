@@ -64,6 +64,8 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `15_hitos_flujo_2026.sql` | Seguimiento por liceo según el flujo actual: hitos por etapa, casi todos automáticos, 2 calculados (respuestas de invitados, entrevista final) |
 | `16_apreciacion_entrevista.sql` | Apreciación de la entrevista (aceptaría / con dudas / no aceptaría) y observaciones, para la selección final |
 | `17_cartolas_leidas.sql` | Huella (hash) y fecha de emisión de cada cartola RSH leída; el PDF no se guarda |
+| `18_seleccion_espera_notas.sql` | Lista de espera y notas del comité de la selección final |
+| `19_envios_directivos.sql` | Correos a los directivos de la fundación (grupo nuevo) y su plantilla |
 
 Para probar cargas: nóminas en `db/nominas-demo/` (el liceo 05 trae errores a propósito).
 Para recorrer el proceso completo (27 liceos, etapas 1 a 5): `db/prueba-completa/` (ver su README y la guía Excel).
@@ -142,6 +144,17 @@ ofrece pasar a la siguiente.
      un comentario, con filtro «Sin entrevistar». Estos campos nunca se bloquean.
    - **Descargar Word:** la pauta de entrevista de la fundación, rellenada con los datos
      del estudiante (ver *Exportar y descargar*).
+   - **Selección final** (etapa 5): cada finalista con todo lo que se sabe de él o ella, para decidir
+     quién recibe la beca. La decisión tiene tres opciones: *Seleccionar*, *En espera* y *No seleccionar*
+     (la lista de espera sigue el ranking). Incluye barra de cupo, **Comparar** de 2 a 3 finalistas lado a
+     lado (verde = mejor desempeño; subrayado = mayor necesidad), ficha amplia navegable con las flechas
+     (datos y situación familiar a la izquierda, entrevistas a la derecha), *Notas del comité* y
+     **Exportar a Excel** (solo lo importante, sin puntajes).
+   - **Enviar a los directivos:** abre *Comunicación* con el Excel adjunto y la plantilla «Resumen de la
+     selección final para la dirección». Le llega a las cuentas de solo lectura (más los correos que se
+     agreguen a mano) y queda registrado en *Correos enviados*.
+   - **Mandar a Resultados:** las marcas de la selección final quedan guardadas como provisorias. Nada es
+     definitivo hasta confirmar en *Resultados*, que también es donde se avisa a los estudiantes.
 6. **Cerrar proceso** (en *Configurar etapas*). Queda guardado en *Generaciones
    anteriores* y vuelve a aparecer "Iniciar proceso" para el año siguiente.
 
@@ -150,7 +163,7 @@ puede consultar con un clic en la barra, sin retroceder el proceso.
 
 ## Exportar y descargar
 
-Cada tipo de documento tiene su color: **verde = Excel**, **azul = Word**.
+Cada tipo de documento tiene su color: **verde = Excel**, **azul = Word**, **rojo = PDF**. Bajar un archivo lleva una flecha hacia abajo y subir uno lleva una carpeta; las acciones secundarias (por ejemplo «Reemplazar») usan el mismo color pero con fondo blanco.
 
 - **Exportar a Excel** (botón verde, arriba en *Avance por etapa*). Está en todas las etapas,
   también al consultar una ya terminada. Trae los estudiantes de la etapa con los datos que se
@@ -201,9 +214,6 @@ API=http://localhost:8080/api node test/flujo-generaciones.mjs       # al final:
 
 - **Cartolas RSH:** definir con la fundación el consentimiento de las familias y la retención de las cartolas
   que llegan por correo; probar con más cartolas reales (hogares con más integrantes) por si el diseño varía.
-- **Página de Selección de becarios** (la última etapa): comparar a los entrevistados, guardar
-  la apreciación general de la entrevista (aceptaría / con dudas / no aceptaría), el cupo y
-  la decisión del Comité.
 - Aceptación del liceo para los seleccionados.
 - Importar el cuestionario de la etapa 3 (personas del hogar según el formulario) y, con eso,
   el Excel de Puntajes (se coordina con quien hace el RSH y el ranking).

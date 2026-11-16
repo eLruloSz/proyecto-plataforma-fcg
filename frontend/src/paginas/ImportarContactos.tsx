@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, CampoFormulario, FilaFormulario, Invitado, PreviaFormulario } from '../api';
-import { Caja, Etiqueta, Modal, useAviso } from '../ui';
+import { Caja, Etiqueta, Icono, Modal, useAviso } from '../ui';
 
 const NOMBRES_CAMPO: Record<CampoFormulario, string> = {
   nombre: 'Nombre completo', apellido1: 'Apellido paterno (si va aparte)', apellido2: 'Apellido materno (si va aparte)',
@@ -111,7 +111,7 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
   // --- Paso 1: elegir el archivo -------------------------------------------
   if (!previa) {
     return (
-      <Modal titulo="Importar respuestas del formulario" onCerrar={onCerrar} ancho="max-w-lg">
+      <Modal titulo="Subir respuestas del formulario" onCerrar={onCerrar} ancho="max-w-lg">
         <div className="space-y-4 text-sm text-gray-700">
           <p>
             Sube el Excel con las respuestas del formulario de <strong>Microsoft Forms</strong>. El sistema busca a qué invitado
@@ -124,8 +124,8 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
           </Caja>
           <input ref={input} type="file" accept=".xlsx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) { setArchivo(f); leer.mutate({ archivo: f }); } }} />
-          <button className="btn-primario" disabled={leer.isPending} onClick={() => input.current?.click()}>
-            {leer.isPending ? 'Leyendo archivo…' : 'Elegir Excel de respuestas'}
+          <button className="btn-excel" disabled={leer.isPending} onClick={() => input.current?.click()}>
+            {leer.isPending ? 'Leyendo archivo…' : <><Icono tipo="carpeta" /> Elegir Excel de respuestas</>}
           </button>
         </div>
       </Modal>
@@ -139,7 +139,7 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
   const paraRevisar = filas.filter(revisar).length;
 
   return (
-    <Modal titulo={`Importar respuestas — ${archivo?.name ?? ''}`} onCerrar={onCerrar} ancho="max-w-6xl"
+    <Modal titulo={`Respuestas del formulario — ${archivo?.name ?? ''}`} onCerrar={onCerrar} ancho="max-w-6xl"
       pie={<>
         <span className="mr-auto self-center text-sm text-gray-500">
           {repetidos.size > 0
@@ -222,7 +222,7 @@ export function ImportarContactos({ invitados, onCerrar }: { invitados: Invitado
                   <tr key={f.fila} className={`align-top ${!d.incluir ? 'text-gray-400' : ''}`}>
                     <td className="pt-3">
                       <input type="checkbox" checked={d.incluir} disabled={!d.invitadoId}
-                        onChange={() => cambiar(f.fila, { incluir: !d.incluir })} aria-label={`Importar la fila ${f.fila}`} />
+                        onChange={() => cambiar(f.fila, { incluir: !d.incluir })} aria-label={`Usar la fila ${f.fila}`} />
                     </td>
                     <td className="min-w-[200px]">
                       <div className={d.incluir ? 'font-medium text-gray-900' : ''}>{f.respuesta.nombre ?? '(sin nombre)'}</div>

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ErrorApi } from '../api';
 import { useSesion } from '../sesion';
-import { Cargando, ErrorCarga, fecha, Modal, useAviso, Vacio } from '../ui';
+import { Cargando, ErrorCarga, fecha, Icono, Modal, useAviso, Vacio } from '../ui';
 
 /** Un estudiante de la etapa y los datos que le faltan a su pauta (lo que quedará en blanco en el Word). */
 export interface FilaPauta {
@@ -146,7 +146,7 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
         </span>
         <button className="btn-secundario" onClick={onCerrar}>Cerrar</button>
         <button className="btn-word" disabled={!lista.length || bajando !== null} onClick={bajarLista}>
-          {bajando === 'todas' ? 'Preparando…' : hayFiltros ? `⬇ Descargar las ${lista.length} de la lista` : `⬇ Descargar todas (${lista.length})`}
+          {bajando === 'todas' ? 'Preparando…' : <><Icono tipo="bajar" /> {hayFiltros ? `Descargar las ${lista.length} de la lista` : `Descargar todas (${lista.length})`}</>}
         </button>
       </>}>
       <p className="mb-3 text-sm text-gray-600">
@@ -219,21 +219,21 @@ export function DescargarPautas({ etapaId, etapaNombre, bajadas, onBajadas, onCe
                         <div className="space-y-1">
                           <div className="text-green-700">✓ Subida · {fecha(f.completada.subido_en)}</div>
                           <div className="flex flex-wrap gap-1">
-                            <button className="btn-secundario btn-chico" onClick={() => bajarCompletada(f)}>Ver / descargar</button>
-                            {!soloLectura && <button className="btn-secundario btn-chico" disabled={subiendo !== null} onClick={() => elegirArchivo(f)}>{subiendo === f.id ? 'Subiendo…' : 'Reemplazar'}</button>}
+                            <button className="btn-word-suave btn-chico" onClick={() => bajarCompletada(f)}><Icono tipo="bajar" /> Ver / descargar</button>
+                            {!soloLectura && <button className="btn-word-suave btn-chico" disabled={subiendo !== null} onClick={() => elegirArchivo(f)}>{subiendo === f.id ? 'Subiendo…' : <><Icono tipo="carpeta" /> Reemplazar</>}</button>}
                             {!soloLectura && <button className="btn-peligro btn-chico" disabled={subiendo !== null} onClick={() => quitarCompletada(f)}>Quitar</button>}
                           </div>
                         </div>
                       ) : soloLectura ? <span className="italic text-gray-400">Sin subir</span> : (
-                        <button className="btn-secundario btn-chico" disabled={subiendo !== null} onClick={() => elegirArchivo(f)}>
-                          {subiendo === f.id ? 'Subiendo…' : '⬆ Subir completada'}
+                        <button className="btn-word-suave btn-chico" disabled={subiendo !== null} onClick={() => elegirArchivo(f)}>
+                          {subiendo === f.id ? 'Subiendo…' : <><Icono tipo="carpeta" /> Subir completada</>}
                         </button>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {yaBajada && <span className="mr-2 text-xs text-green-700">✓ Descargada</span>}
                       <button className="btn-word btn-chico" disabled={bajando !== null} onClick={() => bajarUna(f)}>
-                        {bajando === f.id ? 'Preparando…' : yaBajada ? 'Descargar de nuevo' : 'Descargar'}
+                        {bajando === f.id ? 'Preparando…' : <><Icono tipo="bajar" /> {yaBajada ? 'Descargar de nuevo' : 'Descargar'}</>}
                       </button>
                     </td>
                   </tr>

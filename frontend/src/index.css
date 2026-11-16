@@ -6,9 +6,14 @@
   .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marca-600 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed; }
   .btn-primario { @apply btn bg-marca-700 text-white hover:bg-marca-800; }
   .btn-secundario { @apply btn border border-gray-300 bg-white text-gray-700 hover:bg-gray-50; }
-  /* Un color por tipo de documento: Excel verde, Word azul. */
+  /* Un color por tipo de documento: Excel verde, Word azul, PDF rojo. Las «suaves» son para acciones
+     secundarias del mismo tipo (por ejemplo «Reemplazar»): borde y texto del color, fondo blanco. */
   .btn-excel { @apply btn bg-[#1D6F42] text-white hover:bg-[#165A35]; }
   .btn-word { @apply btn bg-[#2B579A] text-white hover:bg-[#1F4278]; }
+  .btn-pdf { @apply btn bg-[#C62828] text-white hover:bg-[#A61F1F]; }
+  .btn-excel-suave { @apply btn border border-[#1D6F42] bg-white text-[#1D6F42] hover:bg-green-50; }
+  .btn-word-suave { @apply btn border border-[#2B579A] bg-white text-[#2B579A] hover:bg-blue-50; }
+  .btn-pdf-suave { @apply btn border border-[#C62828] bg-white text-[#C62828] hover:bg-red-50; }
   .btn-peligro { @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50; }
   .btn-chico { @apply px-2 py-1 text-xs; }
   /* Marcado automático de quién avanza: mismo estilo en todas las etapas, distinto al resto. */
