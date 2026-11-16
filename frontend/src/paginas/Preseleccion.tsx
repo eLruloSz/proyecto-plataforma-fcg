@@ -9,19 +9,30 @@ type Fila = VistaAvance['estudiantes'][number];
 // Ranking en la tabla de la etapa
 // ---------------------------------------------------------------------------
 
-/** Columnas del ranking: "Lugar" va al inicio (antes del estudiante) y los puntajes a la derecha. */
-export const COLUMNAS_RANKING = 6;
+/**
+ * Columnas del ranking, en el orden que pidió la fundación (2026-11-16):
+ *   Ranking | ID | Estudiante | Liceo | Prom. | RSH y hogar | % RSH | IPC | Pje Académico | Pje Socioeconómico | Pje Participación | Pje Total | Resultado
+ * "Ranking" va al inicio (EncabezadoLugar / CeldaLugar) y el resto después de la ficha.
+ * En las etapas siguientes (entrevistas) se muestra resumido: % RSH, IPC y Pje Total;
+ * con `detalle` se agregan los tres puntajes parciales.
+ */
+export const columnasRanking = (detalle: boolean) => (detalle ? 6 : 3);
 export function EncabezadoLugar() {
-  return <th title="Lugar en el ranking general">Lugar</th>;
+  return <th title="Lugar en el ranking general">Ranking</th>;
 }
-export function EncabezadosPuntajes() {
+export function EncabezadosRanking({ detalle }: { detalle: boolean }) {
   return (
     <>
-      <th className="text-right" title="Puntaje total (máx. 100 = 35 + 40 + 25)">Total <span className="font-normal text-gray-400">/100</span></th>
-      <th className="text-right" title="Puntaje académico (máx. 35): según el lugar del estudiante en su liceo (1° → 35, 2° → 30, 3° → 25)">Académico <span className="font-normal text-gray-400">/35</span></th>
-      <th className="text-right" title="Puntaje socioeconómico (máx. 40) = I.P.C. (máx. 30) + nivel educacional de los padres (máx. 5) + vulnerabilidad (máx. 5)">Socioeconómico <span className="font-normal text-gray-400">/40</span></th>
-      <th className="text-right" title="Compromiso y participación (máx. 25)">Compromiso <span className="font-normal text-gray-400">/25</span></th>
-      <th title="RSH según el Excel del ranking">RSH</th>
+      <th title="% del Registro Social de Hogares (del Excel del ranking)">% RSH</th>
+      <th className="text-right" title="Ingreso per cápita del hogar (del Excel del ranking)">IPC</th>
+      {detalle && (
+        <>
+          <th className="text-right" title="Puntaje académico (máx. 35): según el lugar del estudiante en su liceo (1° → 35, 2° → 30, 3° → 25)">Pje Académico <span className="font-normal text-gray-400">/35</span></th>
+          <th className="text-right" title="Puntaje socioeconómico (máx. 40) = I.P.C. (máx. 30) + nivel educacional de los padres + vulnerabilidad">Pje Socioeconómico <span className="font-normal text-gray-400">/40</span></th>
+          <th className="text-right" title="Compromiso y participación (máx. 25)">Pje Participación <span className="font-normal text-gray-400">/25</span></th>
+        </>
+      )}
+      <th className="text-right" title="Puntaje total (máx. 100 = 35 + 40 + 25)">Pje Total <span className="font-normal text-gray-400">/100</span></th>
     </>
   );
 }
@@ -59,31 +70,39 @@ function LugarLiceo({ n }: { n: number }) {
   );
 }
 
-/** Celda "Lugar" (va antes del nombre). */
+/** Celda "Ranking" (va antes del ID). */
 export function CeldaLugar({ r }: { r: Fila['ranking'] }) {
   return <td className="font-semibold tabular-nums">{r?.posicion ? `${r.posicion}°` : <span className="text-gray-400">—</span>}</td>;
 }
 
-/** Celdas de puntajes (van a la derecha), o "sin ranking" ocupando todas. */
-export function CeldasPuntajes({ r }: { r: Fila['ranking'] }) {
-  if (!r) return <td colSpan={COLUMNAS_RANKING - 1} className="text-xs text-gray-400">sin ranking</td>;
+/** Ingreso per cápita en pesos chilenos: 184518 → "$184.518". */
+const pesos = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `$${Math.round(n).toLocaleString('es-CL')}`);
+
+/** Celdas del ranking (después de la ficha), o "sin ranking" ocupando todas. */
+export function CeldasRanking({ r, detalle }: { r: Fila['ranking']; detalle: boolean }) {
+  if (!r) return <td colSpan={columnasRanking(detalle)} className="text-xs text-gray-400">sin ranking</td>;
   return (
     <>
-      <td className="text-right font-semibold tabular-nums">{p1(r.puntaje_total)}</td>
-      <td className="text-right tabular-nums" title={r.notas !== null ? `Notas ${p1(r.notas)}` : undefined}>
-        <div>{p1(r.puntaje_academico)}</div>
-        {r.ranking_notas ? <LugarLiceo n={r.ranking_notas} /> : null}
-      </td>
-      <td className="text-right tabular-nums">
-        <div>{p1(r.puntaje_socioeconomico)}</div>
-        <div className="whitespace-nowrap text-[11px] text-gray-400">
-          <span title="Puntaje I.P.C. (máx. 30)">IPC {p1(r.puntaje_ipc)}/30</span>
-          {' · '}<span title="Nivel educacional de los padres (máx. 15)">Padres {p1(r.puntaje_nivel_padres)}/15</span>
-          {' · '}<span title="Vulnerabilidad (máx. 5)">Vul. {p1(r.puntaje_vulnerabilidad)}/5</span>
-        </div>
-      </td>
-      <td className="text-right tabular-nums">{p1(r.puntaje_compromiso)}</td>
       <td><EtiquetaRsh rsh={r.rsh} /></td>
+      <td className="whitespace-nowrap text-right tabular-nums">{pesos(r.ipc)}</td>
+      {detalle && (
+        <>
+          <td className="text-right tabular-nums" title={r.notas !== null ? `Notas ${p1(r.notas)}` : undefined}>
+            <div>{p1(r.puntaje_academico)}</div>
+            {r.ranking_notas ? <LugarLiceo n={r.ranking_notas} /> : null}
+          </td>
+          <td className="text-right tabular-nums">
+            <div>{p1(r.puntaje_socioeconomico)}</div>
+            <div className="whitespace-nowrap text-[11px] text-gray-400">
+              <span title="Puntaje I.P.C. (máx. 30)">IPC {p1(r.puntaje_ipc)}/30</span>
+              {' · '}<span title="Nivel educacional de los padres (máx. 15)">Padres {p1(r.puntaje_nivel_padres)}/15</span>
+              {' · '}<span title="Vulnerabilidad (máx. 5)">Vul. {p1(r.puntaje_vulnerabilidad)}/5</span>
+            </div>
+          </td>
+          <td className="text-right tabular-nums">{p1(r.puntaje_compromiso)}</td>
+        </>
+      )}
+      <td className="text-right font-semibold tabular-nums">{p1(r.puntaje_total)}</td>
     </>
   );
 }

@@ -16,6 +16,7 @@ import { PlantillasService } from './plantillas.service';
 import { MailerService } from './mailer.service';
 import { VARIABLES } from './variables';
 import { ArchivosService, TAMANO_MAXIMO } from '../common/archivos.service';
+import { LogoFirmaService } from '../common/logo-firma.service';
 import { Publico, Usuario, UsuarioSesion } from '../auth/public.decorator';
 
 const PROPOSITOS = ['PRESENTACION', 'SOLICITUD_NOTAS', 'SOLICITUD_CONTACTOS', 'INVITACION_ESTUDIANTES', 'AVISO_RESULTADO', 'AGRADECIMIENTO', 'INFORME_LICEO', 'INFORME_DIRECTIVOS', 'OTRO'];
@@ -26,6 +27,7 @@ class PlantillaDto {
   @IsString() @MinLength(1) @MaxLength(300) asunto: string;
   @IsString() @MinLength(1) @MaxLength(50000) cuerpo: string;
   @IsOptional() @IsInt() @Min(1) @Max(20) etapaOrden?: number | null;
+  @IsOptional() @IsInt() @Min(1) @Max(99) orden?: number | null;
 }
 class EditarPlantillaDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(200) nombre?: string;
@@ -33,6 +35,7 @@ class EditarPlantillaDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(300) asunto?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(50000) cuerpo?: string;
   @IsOptional() @IsInt() @Min(1) @Max(20) etapaOrden?: number | null;
+  @IsOptional() @IsInt() @Min(1) @Max(99) orden?: number | null;
 }
 class FiltroEtapaDto {
   @IsUUID() etapaId: string;
@@ -50,6 +53,8 @@ class EnvioDto {
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) postulacionIds?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(30) @IsEmail({}, { each: true }) correosExtra?: string[];
   @IsOptional() @IsUUID() envioOrigenId?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsEmail({}, { each: true }) cc?: string[];
+  @IsOptional() @IsIn(['CADA', 'RESUMEN']) ccModo?: 'CADA' | 'RESUMEN';
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) excluir?: string[];
   @IsOptional() @ValidateNested() @Type(() => FiltroEtapaDto) filtroEtapa?: FiltroEtapaDto;
 }
@@ -73,7 +78,34 @@ export class ComunicacionController {
     private readonly envios: EnviosService,
     private readonly archivos: ArchivosService,
     private readonly mailer: MailerService,
+    private readonly logoFirma: LogoFirmaService,
   ) {}
+
+  // --- Logo de la firma (uno para todo el equipo; se cambia desde Mi perfil) ---
+  @Get('logo-firma') estadoLogo() { return this.logoFirma.estado(); }
+
+  @Get('logo-firma/imagen')
+  async imagenLogo(@Res({ passthrough: true }) res: Response) {
+    const logo = await this.logoFirma.obtener();
+    if (!logo) { res.status(204); return; }
+    res.set({ 'Content-Type': logo.tipo, 'Cache-Control': 'no-store' });
+    return new StreamableFile(logo.contenido);
+  }
+
+  @Post('logo-firma')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: 1024 * 1024 } }))
+  cambiarLogo(@UploadedFile() archivo: Express.Multer.File, @Usuario() u: UsuarioSesion) {
+    return this.logoFirma.cambiar(archivo, u.id);
+  }
+
+  @Delete('logo-firma') quitarLogo(@Usuario() u: UsuarioSesion) { return this.logoFirma.quitar(u.id); }
+
+  @Post('logo-firma/predeterminado') restaurarLogo(@Usuario() u: UsuarioSesion) { return this.logoFirma.restaurar(u.id); }
+
+  /** Para la copia (CC): los demás usuarios activos del equipo. */
+  @Get('cc-sugeridos')
+  ccSugeridos(@Usuario() u: UsuarioSesion) { return this.envios.ccSugeridos(u.id); }
 
   @Get('variables')
   variables() {

@@ -23,6 +23,10 @@ export interface SolicitudEnvio {
   postulacionIds?: string[];
   /** DIRECTIVOS: correos escritos a mano, además de las cuentas de solo lectura de la plataforma. */
   correosExtra?: string[];
+  /** Copia del envío (normalmente, los demás usuarios del equipo). */
+  cc?: string[];
+  /** CADA: CC en cada correo · RESUMEN: una sola copia con el texto y la lista de destinatarios. */
+  ccModo?: 'CADA' | 'RESUMEN';
   /** Reenviar solo a quienes no respondieron un envío anterior. */
   envioOrigenId?: string;
   /** Destinatarios que el usuario quitó de la lista antes de enviar (ids de liceo o postulación). */
@@ -356,10 +360,11 @@ export class EnviosService {
 
     const envioId = await this.ds.transaction(async (em) => {
       const [envio] = await em.query(
-        `INSERT INTO envios (proceso_id, plantilla_id, envio_origen_id, proposito, grupo, asunto, cuerpo, total, enviado_por)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        `INSERT INTO envios (proceso_id, plantilla_id, envio_origen_id, proposito, grupo, asunto, cuerpo, total, enviado_por, cc, cc_modo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
         [proceso.id, s.plantillaId ?? null, s.envioOrigenId ?? null, proposito, grupo, s.asunto, s.cuerpo,
-          destinatarios.length, usuarioId],
+          destinatarios.length, usuarioId, [...new Set((s.cc ?? []).map((x) => x.trim().toLowerCase()).filter(Boolean))],
+          s.ccModo ?? 'CADA'],
       );
       for (const id of adjuntoIds) {
         await em.query(`INSERT INTO envio_adjuntos (envio_id, archivo_id) VALUES ($1, $2)`, [envio.id, id]);
@@ -404,14 +409,17 @@ export class EnviosService {
         `SELECT ar.* FROM envio_adjuntos ea JOIN archivos ar ON ar.id = ea.archivo_id WHERE ea.envio_id = $1`, [envioId])) {
         adjuntos.push({ nombre: a.nombre_original, contenido: await this.archivos.leer(a), tipo: a.mime_type });
       }
+      const [envio] = await this.ds.query(`SELECT cc, cc_modo, total FROM envios WHERE id = $1`, [envioId]);
+      const cc: string[] = envio?.cc ?? [];
+      const ccEnCada = envio?.cc_modo !== 'RESUMEN' ? cc : [];
       const pendientes = await this.ds.query(
-        `SELECT id, liceo_id, email, asunto_final, cuerpo_final FROM envio_destinatarios
+        `SELECT id, liceo_id, nombre, email, asunto_final, cuerpo_final FROM envio_destinatarios
           WHERE envio_id = $1 AND entrega = 'PENDIENTE'`, [envioId]);
 
       for (const d of pendientes) {
         try {
           const { idExterno } = await this.mailer.enviar({
-            para: d.email, asunto: d.asunto_final, texto: d.cuerpo_final, responderA, adjuntos,
+            para: d.email, cc: ccEnCada, asunto: d.asunto_final, texto: d.cuerpo_final, responderA, adjuntos,
           });
           await this.ds.query(
             `UPDATE envio_destinatarios SET entrega = 'ENVIADO', id_externo = $2, error = NULL WHERE id = $1`,
@@ -423,6 +431,23 @@ export class EnviosService {
             [d.id, (e as Error).message.slice(0, 1000)]);
         }
         await new Promise((r) => setTimeout(r, 150)); // no saturar el servidor SMTP
+      }
+      // Copia única: el primer correo tal como llegó, con la lista de a quién se envió.
+      if (envio?.cc_modo === 'RESUMEN' && cc.length && pendientes.length) {
+        const ejemplo = pendientes[0];
+        const lista = pendientes.map((d: { nombre: string; email: string }) => `- ${d.nombre} <${d.email}>`).join('\n');
+        try {
+          await this.mailer.enviar({
+            para: cc.join(', '),
+            asunto: `[Copia] ${ejemplo.asunto_final}`,
+            texto: `Copia de un correo enviado desde la plataforma a ${pendientes.length} destinatario${pendientes.length === 1 ? '' : 's'}.`
+              + ` Cada uno lo recibió con sus propios datos; este es el que recibió ${ejemplo.nombre}.\n\n`
+              + `Destinatarios:\n${lista}\n\n────────────────────────\n\n${ejemplo.cuerpo_final}`,
+            responderA, adjuntos,
+          });
+        } catch (e) {
+          this.log.warn(`No se pudo enviar la copia del envío ${envioId}: ${(e as Error).message}`);
+        }
       }
     } catch (e) {
       this.log.error(`Error procesando el envío ${envioId}: ${(e as Error).message}`);
@@ -454,6 +479,13 @@ export class EnviosService {
       [procesoId],
     );
     return lista.map((e: any) => ({ ...e, asunto: asuntoVisible(e.asunto, proceso.anio) }));
+  }
+
+  /** Los demás usuarios activos del equipo: por defecto van en copia de cada envío. */
+  ccSugeridos(usuarioId: string): Promise<{ nombre: string; email: string }[]> {
+    return this.ds.query(
+      `SELECT nombre_completo AS nombre, email FROM usuarios
+        WHERE activo AND rol = 'EQUIPO' AND id <> $1 ORDER BY nombre_completo`, [usuarioId]);
   }
 
   async detalle(id: string) {

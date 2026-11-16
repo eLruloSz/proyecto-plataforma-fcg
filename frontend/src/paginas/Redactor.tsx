@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
+import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, ModoCopia, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
 import { useProceso } from '../Layout';
 import { PROPOSITOS_DE_ETAPA, tipoEtapa, useEtapa } from '../etapa';
 import { Caja, Etiqueta, useAviso } from '../ui';
@@ -34,6 +34,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const { data: plantillas } = useQuery({ queryKey: ['plantillas'], queryFn: () => api.get<Plantilla[]>('/comunicacion/plantillas') });
   const { data: liceos } = useQuery({ queryKey: ['liceos'], queryFn: () => api.get<Liceo[]>('/liceos') });
   const { data: invitados } = useQuery({ queryKey: ['invitados'], queryFn: () => api.get<Invitado[]>('/invitados') });
+  const { data: sugeridosCc } = useQuery({ queryKey: ['cc-sugeridos'], queryFn: () => api.get<{ nombre: string; email: string }[]>('/comunicacion/cc-sugeridos') });
   const { data: info } = useQuery({ queryKey: ['variables'], queryFn: () => api.get<{ variables: Record<string, string>; modoSimulacion: boolean }>('/comunicacion/variables') });
 
   const { data: proceso } = useProceso();
@@ -59,6 +60,14 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const [excluir, setExcluir] = useState<Set<string>>(new Set());
   const [verEjemplo, setVerEjemplo] = useState(0);
   const [error, setError] = useState('');
+  // Copia (CC): por defecto los demás usuarios del equipo (o la copia del correo que se reenvía).
+  const [cc, setCc] = useState<string[] | null>(origen?.cc ?? null);
+  const [ccOtros, setCcOtros] = useState('');
+  const [ccModo, setCcModo] = useState<ModoCopia>(origen?.cc_modo ?? (inicial.grupo === 'LICEO' ? 'CADA' : 'RESUMEN'));
+  useEffect(() => { if (cc === null && sugeridosCc) setCc(sugeridosCc.map((u) => u.email)); }, [sugeridosCc, cc]);
+  const ccEscritos = [...new Set(ccOtros.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const ccInvalidos = ccEscritos.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+  const ccFinal = [...new Set([...(cc ?? []), ...ccEscritos.filter((x) => !ccInvalidos.includes(x))])];
   const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
   const [nombrePlantilla, setNombrePlantilla] = useState('');
 
@@ -96,6 +105,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const solicitud = (): SolicitudEnvio => {
     const s: SolicitudEnvio = { grupo, proposito, asunto, cuerpo, adjuntoIds: adjuntos.map((a) => a.id) };
     if (plantillaId) s.plantillaId = plantillaId;
+    if (ccFinal.length) { s.cc = ccFinal; s.ccModo = ccModo; }
     if (inicial.reenviar) s.envioOrigenId = inicial.reenviar.id;
     else if (filtro) s.filtroEtapa = filtro;
     else if (grupo === 'LICEO') s.liceoIds = liceoIds;
@@ -142,6 +152,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
     if (!asunto.trim() || !cuerpo.trim()) return 'Escribe el asunto y el cuerpo del correo.';
     if (grupo === 'LICEO' && !inicial.reenviar && !liceoIds.length) return 'Elige al menos un liceo.';
     if (grupo === 'DIRECTIVOS' && extrasInvalidos.length) return `Revisa estos correos: ${extrasInvalidos.join(', ')}`;
+    if (ccInvalidos.length) return `Revisa los correos de la copia: ${ccInvalidos.join(', ')}`;
     return '';
   };
 
@@ -233,6 +244,36 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
           </div>
         )}
 
+        {/* Copia (CC) */}
+        <div className="rounded-md border border-gray-200 p-3">
+          <span className="label">Copia (CC)</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {(sugeridosCc ?? []).map((u) => (
+              <label key={u.email} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={(cc ?? []).includes(u.email)}
+                  onChange={(e) => setCc((l) => (e.target.checked ? [...(l ?? []), u.email] : (l ?? []).filter((x) => x !== u.email)))} />
+                {u.nombre} <span className="text-xs text-gray-400">{u.email}</span>
+              </label>
+            ))}
+            {sugeridosCc?.length === 0 && <span className="text-xs text-gray-400">No hay otros usuarios del equipo.</span>}
+          </div>
+          <input className="input mt-2 py-1 text-sm" value={ccOtros} onChange={(e) => setCcOtros(e.target.value)}
+            placeholder="Otros correos en copia (opcional, separados por coma)" aria-label="Otros correos en copia" />
+          {ccInvalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {ccInvalidos.join(', ')}</span>}
+          {ccFinal.length > 0 && (
+            <div className="mt-2 space-y-1 text-sm">
+              <label className="flex items-start gap-2">
+                <input type="radio" className="mt-1" name="cc-modo" checked={ccModo === 'RESUMEN'} onChange={() => setCcModo('RESUMEN')} />
+                <span><strong>Una sola copia</strong> <span className="text-gray-500">con el texto del correo y la lista de a quién se envió (recomendado si son varios destinatarios).</span></span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input type="radio" className="mt-1" name="cc-modo" checked={ccModo === 'CADA'} onChange={() => setCcModo('CADA')} />
+                <span><strong>En CC de cada correo</strong> <span className="text-gray-500">como un CC normal: el destinatario ve la copia y la respuesta puede llegarles a todos{previa ? ` (${aEnviar.length} correo${aEnviar.length === 1 ? '' : 's'} = ${aEnviar.length} copia${aEnviar.length === 1 ? '' : 's'})` : ''}.</span></span>
+              </label>
+            </div>
+          )}
+        </div>
+
         {/* Contenido */}
         <div>
           <label className="label" htmlFor="asunto">Asunto</label>
@@ -289,7 +330,11 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
       {previa && (
         <div className="tarjeta space-y-4 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="subtitulo">Le llegará a {aEnviar.length} destinatario{aEnviar.length === 1 ? '' : 's'}</h2>
+            <h2 className="subtitulo">
+              Le llegará a {aEnviar.length} destinatario{aEnviar.length === 1 ? '' : 's'}
+              {ccFinal.length > 0 && <span className="ml-2 text-sm font-normal text-gray-500">
+                {ccModo === 'RESUMEN' ? `+ 1 copia a ${ccFinal.join(', ')}` : `con copia a ${ccFinal.join(', ')}`}</span>}
+            </h2>
             <button className="btn-primario" disabled={!aEnviar.length || enviar.isPending} onClick={() => enviar.mutate()}>
               {enviar.isPending ? 'Enviando…' : `Enviar a ${aEnviar.length}`}
             </button>
@@ -329,6 +374,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
               {ejemplo ? (
                 <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
                   <div className="text-xs text-gray-500">Para: {ejemplo.email}</div>
+                  {ccFinal.length > 0 && ccModo === 'CADA' && <div className="text-xs text-gray-500">CC: {ccFinal.join(', ')}</div>}
                   <div className="mb-3 font-semibold">{ejemplo.asunto}</div>
                   <div className="whitespace-pre-wrap leading-relaxed text-gray-800">{ejemplo.cuerpo}</div>
                   {adjuntos.length > 0 && <div className="mt-3 text-xs text-gray-500">📎 {adjuntos.map((a) => a.nombre).join(', ')}</div>}

@@ -10,7 +10,7 @@ import { ImportarContactos } from './ImportarContactos';
 import { Caja, Cargando, ErrorCarga, Etiqueta, fecha, Icono, Modal, nota, useAviso, Vacio } from '../ui';
 import { ConfigurarEtapas } from './ConfigurarEtapas';
 import { useSesion } from '../sesion';
-import { CeldaFicha, CeldaLugar, CeldasPuntajes, COLUMNAS_RANKING, EncabezadoLugar, EncabezadosPuntajes, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
+import { CeldaFicha, CeldaLugar, CeldasRanking, columnasRanking, EncabezadoLugar, EncabezadosRanking, FichaModal, MarcarSegunRanking, SubirRanking } from './Preseleccion';
 import { ESTADOS } from './Entrevistas';
 
 type Fila = VistaAvance['estudiantes'][number];
@@ -129,6 +129,11 @@ export function Avance() {
   const esPre = v?.etapa.clave === 'PRESELECCION';
   const esEntrevista = ['ENTREVISTA', 'ENTREVISTA_COMITE'].includes(v?.etapa.clave ?? '');
   const esEncuentro = v?.etapa.clave === 'ENCUENTRO';
+  // El ranking se ve completo en la Preselección N°1 y resumido en las etapas de entrevistas
+  // (ahí solo quedan los que fueron avanzando); "Ver detalle" agrega los puntajes parciales.
+  const conRanking = esPre || esEntrevista;
+  const [verDetalle, setVerDetalle] = useState(false);
+  const detalleRanking = esPre || verDetalle;
   const { data: encuentros } = useEncuentros();
   const { data: ranking } = useQuery({ queryKey: ['ranking'], queryFn: () => api.get<CargaRanking>('/ranking'), enabled: esPre });
   // La importación del Excel del formulario necesita la lista de invitados.
@@ -215,9 +220,9 @@ export function Avance() {
     if (asistenciaFiltro === 'no') return f.asistio_encuentro === false;
     if (asistenciaFiltro === 'sin-registrar') return !!f.encuentro_evento_id && f.asistio_encuentro === null;
     return true;
-  }).sort((a, b) => (esPre && orden === 'ranking'
+  }).sort((a, b) => (conRanking && orden === 'ranking'
     ? (a.ranking?.posicion ?? Infinity) - (b.ranking?.posicion ?? Infinity)
-    : 0)), [v, filtro, liceoFiltro, esPre, orden, esEncuentro, fechaFiltro, asistenciaFiltro]);
+    : 0)), [v, filtro, liceoFiltro, conRanking, orden, esEncuentro, fechaFiltro, asistenciaFiltro]);
 
   if (!proceso || isLoading) return <Cargando />;
   if (error || !v) return <ErrorCarga error={error} />;
@@ -393,7 +398,13 @@ export function Avance() {
           {esPre && ranking?.carga && <> · ranking: {ranking.carga.nombre_archivo}, cargado {fecha(ranking.carga.cargado_en)}</>}
         </span>
         <div className="flex flex-wrap gap-2">
-        {esPre && (
+        {esEntrevista && (
+          <button className="btn-secundario" onClick={() => setVerDetalle((x) => !x)} aria-pressed={verDetalle}
+            title="Muestra u oculta los puntajes Académico, Socioeconómico y Participación">
+            {verDetalle ? 'Ocultar detalle del ranking' : 'Ver detalle del ranking'}
+          </button>
+        )}
+        {conRanking && (
           <select className="input w-auto" value={orden} onChange={(ev) => setOrden(ev.target.value as typeof orden)} aria-label="Ordenar">
             <option value="ranking">Ordenar por ranking</option>
             <option value="id">Ordenar por Id</option>
@@ -432,11 +443,11 @@ export function Avance() {
         <table className="tabla">
           <thead>
             <tr>
-              {esPre && <EncabezadoLugar />}
-              {esPre ? <><th>Estudiante</th><th>Id</th></> : <><th>Id</th><th>Estudiante</th></>}
+              {conRanking && <EncabezadoLugar />}
+              <th>ID</th><th>Estudiante</th>
               <th>Liceo</th><th className="text-right">Prom.</th>
-              {esPre && <EncabezadosPuntajes />}
-              {esPre && <th title="Datos del hogar según la cartola RSH">Hogar (ficha)</th>}
+              {esPre && <th title="Datos del hogar según la cartola RSH">RSH y hogar</th>}
+              {conRanking && <EncabezadosRanking detalle={detalleRanking} />}
               {esEntrevista && <th>Entrevista</th>}
               {esEncuentro && <><th className="min-w-[170px]">Fecha del encuentro</th><th>Asistió</th></>}
               {muestraAcepta && <th>Aceptó postular</th>}
@@ -445,23 +456,22 @@ export function Avance() {
             </tr>
           </thead>
           <tbody>
-            {filas.length === 0 && <tr><td colSpan={5 + requisitos.length + (esPre ? COLUMNAS_RANKING + 1 : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0) + (muestraAcepta ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
+            {filas.length === 0 && <tr><td colSpan={5 + requisitos.length + (esPre ? 1 : 0) + (conRanking ? 1 + columnasRanking(detalleRanking) : 0) + (esEntrevista ? 1 : 0) + (esEncuentro ? 2 : 0) + (muestraAcepta ? 1 : 0)}><Vacio>No hay estudiantes con este filtro.</Vacio></td></tr>}
             {filas.map((f) => {
               const bloqueado = f.confirmado || !f.en_esta_etapa;
               const fondo = f.confirmado ? 'bg-gray-50 text-gray-500' : f.resultado === 'PASA' ? 'bg-green-50/70' : f.resultado === 'NO_PASA' ? 'bg-red-50/60' : '';
               return (
                 <tr key={f.id} className={fondo}>
-                  {esPre && <CeldaLugar r={f.ranking} />}
-                  {!esPre && <td className="font-mono text-xs">{f.codigo}</td>}
+                  {conRanking && <CeldaLugar r={f.ranking} />}
+                  <td className="font-mono text-xs">{f.codigo}</td>
                   <td className={`whitespace-nowrap ${f.resultado === 'NO_PASA' ? 'line-through decoration-red-400' : ''}`}>
                     {f.apellido_paterno} {f.apellido_materno}, {f.nombres}
                     {!f.email && <span className="ml-1 text-[11px] text-red-700">sin email</span>}
                   </td>
-                  {esPre && <td className="font-mono text-xs">{f.codigo}</td>}
                   <td className="max-w-[160px] truncate text-gray-600" title={f.liceo}>{f.liceo}</td>
                   <td className="text-right tabular-nums">{nota(f.promedio)}</td>
-                  {esPre && <CeldasPuntajes r={f.ranking} />}
                   {esPre && <td><CeldaFicha f={f} onAbrir={() => setFichaDe(f)} onCargar={soloLectura ? undefined : () => navegar(`/cartolas?cargar=${f.id}`)} /></td>}
+                  {conRanking && <CeldasRanking r={f.ranking} detalle={detalleRanking} />}
                   {esEncuentro && (
                     <>
                       <td>

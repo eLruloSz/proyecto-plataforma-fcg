@@ -9,6 +9,8 @@ export interface DatosPlantilla {
   proposito?: string;
   /** Etapa (orden) a la que pertenece la plantilla; null = cualquier etapa. */
   etapaOrden?: number | null;
+  /** Posición dentro de su etapa, en el orden en que se envían (1 = el primero). */
+  orden?: number | null;
   asunto?: string;
   cuerpo?: string;
   activo?: boolean;
@@ -32,7 +34,7 @@ export class PlantillasService {
          LEFT JOIN archivos a ON a.id = pa.archivo_id
         WHERE p.activo
         GROUP BY p.id
-        ORDER BY p.etapa_orden NULLS FIRST, p.creado_en`,
+        ORDER BY p.etapa_orden NULLS LAST, p.orden NULLS LAST, p.creado_en, p.nombre`,
     );
   }
 
@@ -44,8 +46,8 @@ export class PlantillasService {
 
   async crear(d: Required<Pick<DatosPlantilla, 'nombre' | 'asunto' | 'cuerpo'>> & DatosPlantilla, usuarioId: string) {
     const [p] = await this.ds.query(
-      `INSERT INTO plantillas_correo (nombre, proposito, asunto, cuerpo, etapa_orden) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [d.nombre, d.proposito ?? 'OTRO', d.asunto, d.cuerpo, d.etapaOrden ?? null]);
+      `INSERT INTO plantillas_correo (nombre, proposito, asunto, cuerpo, etapa_orden, orden) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [d.nombre, d.proposito ?? 'OTRO', d.asunto, d.cuerpo, d.etapaOrden ?? null, d.orden ?? null]);
     await this.auditoria.registrar(usuarioId, 'CREAR_PLANTILLA', 'plantillas_correo', p.id);
     return this.obtener(p.id);
   }
@@ -54,10 +56,11 @@ export class PlantillasService {
     const r = await this.ds.query(
       `UPDATE plantillas_correo SET nombre = COALESCE($2, nombre), proposito = COALESCE($3, proposito),
               asunto = COALESCE($4, asunto), cuerpo = COALESCE($5, cuerpo),
-              etapa_orden = CASE WHEN $6::boolean THEN $7::smallint ELSE etapa_orden END
+              etapa_orden = CASE WHEN $6::boolean THEN $7::smallint ELSE etapa_orden END,
+              orden = CASE WHEN $8::boolean THEN $9::smallint ELSE orden END
         WHERE id = $1 AND activo RETURNING id`,
       [id, d.nombre ?? null, d.proposito ?? null, d.asunto ?? null, d.cuerpo ?? null,
-        d.etapaOrden !== undefined, d.etapaOrden ?? null]);
+        d.etapaOrden !== undefined, d.etapaOrden ?? null, d.orden !== undefined, d.orden ?? null]);
     if (!filas(r).length) throw new NotFoundException('Plantilla no encontrada.');
     await this.auditoria.registrar(usuarioId, 'EDITAR_PLANTILLA', 'plantillas_correo', id);
     return this.obtener(id);

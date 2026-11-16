@@ -60,6 +60,7 @@ export function DetalleEnvio() {
             <h1 className="titulo">{e.asunto_visible}</h1>
             <p className="text-sm text-gray-500">
               {PROPOSITOS[e.proposito]} · {GRUPOS[e.grupo]} · {fecha(e.enviado_en)}{e.enviado_por_nombre ? ` · por ${e.enviado_por_nombre}` : ''}
+              {e.cc?.length ? ` · copia${e.cc_modo === 'RESUMEN' ? ' (una sola)' : ' (CC)'} a ${e.cc.join(', ')}` : ''}
             </p>
             {e.adjuntos.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-2 text-xs">

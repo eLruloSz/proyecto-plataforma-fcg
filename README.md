@@ -66,6 +66,9 @@ siempre es una migración sin aplicar (el log dice `column ... does not exist` o
 | `17_cartolas_leidas.sql` | Huella (hash) y fecha de emisión de cada cartola RSH leída; el PDF no se guarda |
 | `18_seleccion_espera_notas.sql` | Lista de espera y notas del comité de la selección final |
 | `19_envios_directivos.sql` | Correos a los directivos de la fundación (grupo nuevo) y su plantilla |
+| `20_orden_plantillas.sql` | Orden de las plantillas dentro de cada etapa (el primer correo arriba) y desactiva las plantillas antiguas reemplazadas |
+| `21_logo_firma.sql` | Tabla `configuracion`: logo al final de los correos (por defecto `backend/assets/logo-firma.png`; se cambia en Mi perfil) |
+| `22_envios_cc.sql` | Copia (CC) de los correos al resto del equipo: en cada correo o una sola copia con la lista de destinatarios |
 
 **Al actualizar desde una versión anterior** (base de datos ya creada): Docker solo ejecuta estas migraciones en una
 base nueva. Si ya tenías la base, corre a mano las que falten (por ejemplo 17, 18 y 19), una por una:

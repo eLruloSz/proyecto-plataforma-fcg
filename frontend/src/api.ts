@@ -58,6 +58,13 @@ export const api = {
     f.append('archivo', archivo);
     return pedir<T>('POST', ruta, f);
   },
+  /** Archivo como Blob, con el token (para mostrar una imagen protegida). null si no hay contenido. */
+  blob: async (ruta: string): Promise<Blob | null> => {
+    const r = await fetch(BASE + ruta, { headers: { Authorization: `Bearer ${obtenerToken()}` } });
+    if (r.status === 204) return null;
+    if (!r.ok) throw new ErrorApi(r.status, 'No se pudo cargar el archivo.');
+    return r.blob();
+  },
   /** Descarga con el token (un <a href> no lo enviaría). */
   descargar: async (ruta: string, nombre: string) => {
     const r = await fetch(BASE + ruta, { headers: { Authorization: `Bearer ${obtenerToken()}` } });
@@ -72,6 +79,9 @@ export const api = {
 // ---------------------------------------------------------------------------
 // Tipos de la API
 // ---------------------------------------------------------------------------
+
+/** GET /comunicacion/logo-firma */
+export interface EstadoLogoFirma { modo: 'PREDETERMINADO' | 'PERSONALIZADO' | 'NINGUNO'; nombre: string | null; actualizadoEn: string | null }
 
 export interface Etapa {
   id: string; orden: number; nombre: string; descripcion: string | null; estado: 'PENDIENTE' | 'ACTIVA' | 'CERRADA'; clave: string | null;
@@ -168,6 +178,8 @@ export interface Plantilla {
   id: string; nombre: string; proposito: string; asunto: string; cuerpo: string;
   /** Etapa (orden) a la que pertenece; null = cualquier etapa. */
   etapa_orden: number | null;
+  /** Posición dentro de su etapa, en el orden en que se envían (1 = el primero). */
+  orden: number | null;
   adjuntos: { id: string; nombre: string; tamano: number }[];
 }
 export interface EnvioResumen {
@@ -183,6 +195,8 @@ export interface Destinatario {
 export interface EnvioDetalle {
   id: string; grupo: Grupo; proposito: string; asunto: string; asunto_visible: string; cuerpo: string; total: number; enviado_en: string;
   enviado_por_nombre: string | null; envio_origen_id: string | null; plantilla_id: string | null;
+  /** Copia: CADA = en CC de cada correo; RESUMEN = una sola copia con la lista de destinatarios. */
+  cc: string[]; cc_modo: ModoCopia;
   destinatarios: Destinatario[]; adjuntos: { id: string; nombre_original: string; tamano_bytes: number }[];
 }
 export interface PreviaEnvio {
@@ -198,7 +212,10 @@ export interface SolicitudEnvio {
   liceoIds?: string[]; postulacionIds?: string[]; envioOrigenId?: string; excluir?: string[]; filtroEtapa?: FiltroEtapa;
   /** DIRECTIVOS: correos escritos a mano, además de las cuentas de solo lectura. */
   correosExtra?: string[];
+  cc?: string[];
+  ccModo?: ModoCopia;
 }
+export type ModoCopia = 'CADA' | 'RESUMEN';
 export interface Dashboard {
   proceso: { id: string; nombre: string; anio: number };
   embudo: { invitados: number; confirmaron: number; rechazaron: number; sin_respuesta: number; asistieron_encuentro: number; becarios: number; sin_email: number };

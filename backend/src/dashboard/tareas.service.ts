@@ -196,7 +196,8 @@ export class TareasService {
     return [
       { clave: 'presentacion', titulo: 'Enviar el correo de presentación a los liceos', hecha: d.total > 0 && d.presentados >= d.total,
         detalle: `${d.presentados} de ${plural(d.total, 'liceo', 'liceos')}`,
-        accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=PRESENTACION' } },
+        // El primer correo a los liceos presenta la beca y pide las notas (plantilla de inicio).
+        accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=SOLICITUD_NOTAS' } },
       { clave: 'participacion', titulo: 'Saber qué liceos participan', hecha: d.total > 0 && d.sin_respuesta === 0,
         detalle: `${d.participan} participan · ${d.no_participan} no · ${d.sin_respuesta} sin respuesta`,
         accion: { texto: 'Ver respuestas', ruta: '/comunicacion' } },

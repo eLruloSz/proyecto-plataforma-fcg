@@ -42,6 +42,9 @@ services:
       - ./db/17_cartolas_leidas.sql:/docker-entrypoint-initdb.d/17_cartolas_leidas.sql:ro
       - ./db/18_seleccion_espera_notas.sql:/docker-entrypoint-initdb.d/18_seleccion_espera_notas.sql:ro
       - ./db/19_envios_directivos.sql:/docker-entrypoint-initdb.d/19_envios_directivos.sql:ro
+      - ./db/20_orden_plantillas.sql:/docker-entrypoint-initdb.d/20_orden_plantillas.sql:ro
+      - ./db/21_logo_firma.sql:/docker-entrypoint-initdb.d/21_logo_firma.sql:ro
+      - ./db/22_envios_cc.sql:/docker-entrypoint-initdb.d/22_envios_cc.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s

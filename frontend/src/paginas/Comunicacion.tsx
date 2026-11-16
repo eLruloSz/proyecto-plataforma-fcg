@@ -8,7 +8,7 @@ import { useProceso } from '../Layout';
 
 /** "Etapa 3 · Preselección N°1" (o "Cualquier etapa"). */
 function nombreEtapa(orden: number | null, etapas: { orden: number; nombre: string }[] | undefined) {
-  if (orden === null) return 'Cualquier etapa';
+  if (orden === null) return 'Otras plantillas (sirven en cualquier etapa)';
   const e = etapas?.find((x) => x.orden === orden);
   return e ? `Etapa ${orden} · ${e.nombre}` : `Etapa ${orden}`;
 }
@@ -63,6 +63,7 @@ function EditarPlantilla({ plantilla, onCerrar }: { plantilla: Plantilla | null;
   const [f, setF] = useState({
     nombre: plantilla?.nombre ?? '', proposito: plantilla?.proposito ?? 'OTRO', asunto: plantilla?.asunto ?? '', cuerpo: plantilla?.cuerpo ?? '',
     etapaOrden: plantilla?.etapa_orden ?? null as number | null,
+    orden: plantilla?.orden ?? null as number | null,
   });
   const [actual, setActual] = useState<Plantilla | null>(plantilla);
   const [error, setError] = useState('');
@@ -90,7 +91,7 @@ function EditarPlantilla({ plantilla, onCerrar }: { plantilla: Plantilla | null;
       pie={<><button className="btn-secundario" onClick={onCerrar}>{actual && !plantilla ? 'Listo' : 'Cancelar'}</button>
         <button className="btn-primario" disabled={guardar.isPending} onClick={enviar}>{actual ? 'Guardar cambios' : 'Crear plantilla'}</button></>}>
       <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-[2fr_1.5fr_1.5fr_6rem]">
           <div><label className="label" htmlFor="pn">Nombre</label><input id="pn" className="input" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></div>
           <div><label className="label" htmlFor="pp">Tipo de correo</label>
             <select id="pp" className="input" value={f.proposito} onChange={(e) => setF({ ...f, proposito: e.target.value })}>
@@ -101,6 +102,9 @@ function EditarPlantilla({ plantilla, onCerrar }: { plantilla: Plantilla | null;
               <option value="">Cualquier etapa</option>
               {proceso?.etapas.map((e) => <option key={e.orden} value={e.orden}>{e.orden}. {e.nombre}</option>)}
             </select></div>
+          <div><label className="label" htmlFor="po" title="Posición dentro de la etapa: 1 = el primer correo que se envía">N° en la etapa</label>
+            <input id="po" type="number" min={1} max={99} className="input" value={f.orden ?? ''}
+              onChange={(e) => setF({ ...f, orden: e.target.value ? Math.max(1, Math.min(99, Number(e.target.value))) : null })} /></div>
         </div>
         <p className="-mt-1 text-xs text-gray-400">Si el nombre termina en (contrapartes), (directivos) o (postulantes), el correo parte dirigido a ese grupo.</p>
         <div><label className="label" htmlFor="pa">Asunto</label><input id="pa" className="input" value={f.asunto} onChange={(e) => setF({ ...f, asunto: e.target.value })} /></div>
@@ -141,7 +145,10 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
   if (isLoading) return <Cargando />;
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><button className="btn-secundario" onClick={() => setEditando('nueva')}>+ Nueva plantilla</button></div>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-gray-500">Ordenadas por etapa y, dentro de cada una, en el orden en que se envían los correos.</p>
+        <button className="btn-secundario flex-shrink-0" onClick={() => setEditando('nueva')}>+ Nueva plantilla</button>
+      </div>
       <div className="tarjeta divide-y divide-gray-100">
         {data?.map((p, i) => (
           <div key={p.id}>
@@ -149,9 +156,16 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
             <div className="bg-gray-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">{nombreEtapa(p.etapa_orden, proceso?.etapas)}</div>
           )}
           <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex min-w-0 items-start gap-3">
+            <span className={`mt-0.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ${p.orden ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-400'}`}
+              title={p.orden ? `Correo N° ${p.orden} de la etapa` : 'Sin orden'}>{p.orden ?? '·'}</span>
             <div className="min-w-0">
-              <div className="text-sm font-medium text-gray-900">{p.nombre}</div>
+              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900">
+                {nombreSinDestino(p.nombre)}
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-normal text-gray-600">{DESTINO[grupoDePlantilla(p)] ?? 'Contrapartes'}</span>
+              </div>
               <div className="truncate text-xs text-gray-500">{PROPOSITOS[p.proposito]} · {p.asunto}{p.adjuntos.length ? ` · 📎 ${p.adjuntos.length}` : ''}</div>
+            </div>
             </div>
             <div className="flex flex-shrink-0 gap-2">
               <button className="btn-primario btn-chico" onClick={() => onUsar(p.id)}>Usar</button>
@@ -203,7 +217,16 @@ function plantillaSugerida(plantillas: Plantilla[], proposito: string | null, ti
     ? (p.etapa_orden === etapaOrden ? 0 : p.etapa_orden === null ? 1 : 2)
     : (p.etapa_orden !== null ? 0 : 1);
   // Con etapa conocida, una plantilla de OTRA etapa no se propone (sería el texto equivocado).
-  return [...candidatas].sort((a, b) => prioridad(a) - prioridad(b)).find((p) => etapaOrden === undefined || prioridad(p) < 2);
+  return [...candidatas].sort((a, b) => prioridad(a) - prioridad(b) || (a.orden ?? 99) - (b.orden ?? 99)).find((p) => etapaOrden === undefined || prioridad(p) < 2);
+}
+
+/** A quién va cada plantilla (etiqueta de la lista). */
+const DESTINO: Record<string, string> = {
+  CONTRAPARTES: 'Contrapartes', POSTULANTES: 'Estudiantes', DIRECTORES: 'Directores de liceos', DIRECTIVOS: 'Dirección de la fundación',
+};
+/** "Resultado final (contrapartes)" → "Resultado final": el destinatario ya se muestra como etiqueta. */
+function nombreSinDestino(nombre: string) {
+  return nombre.replace(/\s*\((contrapartes|postulantes|directivos)\)\s*$/i, '');
 }
 
 /** Grupo al que va un correo hecho desde una plantilla. */

@@ -13,5 +13,7 @@ RUN apk add --no-cache poppler-utils
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+# Logo que va al final de los correos (se puede cambiar desde Mi perfil).
+COPY assets ./assets
 EXPOSE 3000
 CMD ["node", "dist/main"]
