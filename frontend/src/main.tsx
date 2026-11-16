@@ -19,6 +19,7 @@ import { DetalleEnvio } from './paginas/DetalleEnvio';
 import { Perfil } from './paginas/Perfil';
 import { Avance } from './paginas/Avance';
 import { Entrevistas } from './paginas/Entrevistas';
+import { Seleccion } from './paginas/Seleccion';
 import { PantallaInicio, useInicio } from './paginas/InicioProceso';
 import { DetalleGeneracion, PaginaGeneraciones } from './paginas/Generaciones';
 
@@ -53,6 +54,7 @@ function Rutas() {
         <Route path="avance/:etapaId" element={<Avance />} />
         <Route path="entrevistas" element={<Entrevistas />} />
         <Route path="entrevistas/:etapaId" element={<Entrevistas />} />
+        <Route path="seleccion/:etapaId" element={<Seleccion />} />
         <Route path="generaciones" element={<PaginaGeneraciones />} />
         <Route path="generaciones/:anio" element={<DetalleGeneracion />} />
         <Route path="perfil" element={<Perfil />} />
