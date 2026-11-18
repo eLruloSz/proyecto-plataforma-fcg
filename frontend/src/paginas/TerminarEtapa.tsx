@@ -67,12 +67,12 @@ export function TerminarEtapa({ etapaId, onCerrar, mensaje }: { etapaId: string;
             <p>Es mejor avisarles antes de terminar la etapa (después también se puede, desde el aviso de la etapa siguiente).</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {r.sin_avisar_pasa > 0 && (
-                <button className="btn-secundario btn-chico" onClick={() => { onCerrar(); navegar(`/comunicacion?nuevo=1&etapa=${t.etapa.id}&tipo=PASA&soloSinAviso=1`); }}>
+                <button className="btn-secundario btn-chico" onClick={() => { onCerrar(); navegar(`/comunicacion?nuevo=1&etapa=${t.etapa.id}&tipo=PASA&soloSinAviso=1&volver=${encodeURIComponent(`/avance/${t.etapa.id}?paso=avisar`)}`); }}>
                   Avisar a los que avanzan ({r.sin_avisar_pasa})
                 </button>
               )}
               {r.sin_avisar_no_pasa > 0 && (
-                <button className="btn-secundario btn-chico" onClick={() => { onCerrar(); navegar(`/comunicacion?nuevo=1&etapa=${t.etapa.id}&tipo=NO_PASA&soloSinAviso=1`); }}>
+                <button className="btn-secundario btn-chico" onClick={() => { onCerrar(); navegar(`/comunicacion?nuevo=1&etapa=${t.etapa.id}&tipo=NO_PASA&soloSinAviso=1&volver=${encodeURIComponent(`/avance/${t.etapa.id}?paso=avisar`)}`); }}>
                   Avisar a los que no avanzan ({r.sin_avisar_no_pasa})
                 </button>
               )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, CargaRanking, Encuentro, Invitado, VistaAvance } from '../api';
 import { useProceso } from '../Layout';
@@ -78,6 +78,9 @@ function Requisitos({ vista, onCerrar }: { vista: VistaAvance; onCerrar: () => v
 export function Avance() {
   const { soloLectura } = useSesion();
   const { etapaId: param } = useParams<{ etapaId?: string }>();
+  const [busqueda, setBusqueda] = useSearchParams();
+  // Al volver de enviar un aviso, se lleva la vista al paso 4 (avisar y terminar).
+  const pasoAvisarRef = useRef<HTMLDivElement>(null);
   const navegar = useNavigate();
   const qc = useQueryClient();
   const avisar = useAviso();
@@ -224,6 +227,12 @@ export function Avance() {
     ? (a.ranking?.posicion ?? Infinity) - (b.ranking?.posicion ?? Infinity)
     : 0)), [v, filtro, liceoFiltro, conRanking, orden, esEncuentro, fechaFiltro, asistenciaFiltro]);
 
+  useEffect(() => {
+    if (!v || busqueda.get('paso') !== 'avisar') return;
+    pasoAvisarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setBusqueda({}, { replace: true });
+  }, [v, busqueda, setBusqueda]);
+
   if (!proceso || isLoading) return <Cargando />;
   if (error || !v) return <ErrorCarga error={error} />;
 
@@ -250,8 +259,15 @@ export function Avance() {
     : esPre ? { texto: 'Marcar según ranking', ayuda: ranking?.carga ? 'Los primeros N del ranking avanzan, el resto no.' : 'Primero sube el ranking (Excel) en Herramientas.',
       accion: () => setMarcandoRanking(true), deshabilitado: !ranking?.carga }
     : null;
+  // Después de enviar el correo se vuelve a esta pantalla, al paso 4 (avisar y terminar).
   const avisarA = (tipo: string, soloSinAviso = true, deEtapa = e.id) =>
-    navegar(`/comunicacion?nuevo=1&etapa=${deEtapa}&tipo=${tipo}${soloSinAviso ? '&soloSinAviso=1' : ''}`);
+    navegar(`/comunicacion?nuevo=1&etapa=${deEtapa}&tipo=${tipo}${soloSinAviso ? '&soloSinAviso=1' : ''}`
+      + `&volver=${encodeURIComponent(`/avance/${e.id}?paso=avisar`)}`);
+  // Paso 4: estado de los avisos y de la etapa.
+  const enCurso = e.id === actual?.id;
+  const sinAvisar = r.sin_avisar_pasa + r.sin_avisar_no_pasa;
+  const listaParaTerminar = enCurso && marcadas === 0 && sinAvisar === 0 && r.pendientes_de_decidir === 0;
+  const pasoActivo = marcadas > 0 ? 3 : sinAvisar > 0 || listaParaTerminar ? 4 : r.pendientes_de_decidir > 0 ? 1 : 0;
   const ra = vAnterior?.resumen;
 
   return (
@@ -265,9 +281,6 @@ export function Avance() {
         <div className="flex gap-2">
           <BotonExcel etapaId={e.id} nombre={`Etapa ${e.orden} - ${e.nombre}.xlsx`} />
           <button className="btn-secundario" onClick={() => setConfigEtapas(true)}>Configurar etapas</button>
-          {e.id === actual?.id && (
-            <button className="btn-secundario" onClick={() => setTerminando({})}>{e.siguiente ? 'Terminar etapa' : 'Última etapa'}</button>
-          )}
         </div>
       </div>
 
@@ -348,7 +361,7 @@ export function Avance() {
         <div className="border-b border-marca-100 bg-marca-50 px-4 py-2">
           <h2 className="text-sm font-semibold text-marca-800">¿Quién avanza{e.siguiente ? ` a ${e.siguiente.nombre}` : ''}?</h2>
         </div>
-        <div className="grid gap-4 p-4 md:grid-cols-3">
+        <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500"><span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-marca-700 text-[11px] text-white">1</span>Marcar</p>
             {criterio ? (
@@ -380,13 +393,28 @@ export function Avance() {
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500"><span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-marca-700 text-[11px] text-white">3</span>Confirmar</p>
             <button className="btn-primario w-full" disabled={!marcadas} onClick={() => setConfirmando(true)}>Confirmar avance ({marcadas})</button>
-            {(r.sin_avisar_pasa > 0 || r.sin_avisar_no_pasa > 0) && (
-              <div className="flex flex-wrap gap-2">
-                {r.sin_avisar_pasa > 0 && <button className="btn-secundario btn-chico" onClick={() => avisarA('PASA')}>Avisar a los que avanzan ({r.sin_avisar_pasa})</button>}
-                {r.sin_avisar_no_pasa > 0 && <button className="btn-secundario btn-chico" onClick={() => avisarA('NO_PASA')}>Avisar a los que no avanzan ({r.sin_avisar_no_pasa})</button>}
-              </div>
+            <p className="text-xs text-gray-500">{marcadas ? 'Nada cambia hasta que confirmas.' : 'No hay marcas por confirmar.'}</p>
+          </div>
+          <div ref={pasoAvisarRef} className={`space-y-2 rounded-md ${pasoActivo === 4 ? '-m-2 bg-marca-50/60 p-2 ring-2 ring-marca-300' : ''}`}>
+            <p className="text-xs font-semibold text-gray-500"><span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-marca-700 text-[11px] text-white">4</span>Avisar y terminar</p>
+            <PasoAviso texto="Avisar a los que avanzan" pendientes={r.sin_avisar_pasa} confirmados={r.confirmados_pasa}
+              onAvisar={() => avisarA('PASA')} deshabilitado={soloLectura} />
+            <PasoAviso texto="Avisar a los que no avanzan" pendientes={r.sin_avisar_no_pasa} confirmados={r.confirmados_no_pasa}
+              onAvisar={() => avisarA('NO_PASA')} deshabilitado={soloLectura} />
+            {enCurso ? (
+              <>
+                <button className={`w-full ${listaParaTerminar ? 'btn-primario' : 'btn-secundario'}`} disabled={soloLectura} onClick={() => setTerminando({})}>
+                  {e.siguiente ? `Terminar etapa y pasar a ${e.siguiente.nombre}` : 'Terminar la última etapa'}
+                </button>
+                <p className="text-xs text-gray-500">
+                  {listaParaTerminar ? 'Todo listo: ya puedes terminar la etapa.'
+                    : sinAvisar > 0 ? 'Conviene avisar antes de terminar (se puede terminar igual).'
+                    : 'Se puede terminar aunque queden pendientes: se mostrarán como advertencia.'}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500">{e.estado === 'PENDIENTE' ? 'Esta etapa aún no comienza.' : 'Esta etapa ya terminó.'}</p>
             )}
-            {!marcadas && <p className="text-xs text-gray-500">Nada cambia hasta que confirmas.</p>}
           </div>
         </div>
       </div>
@@ -580,7 +608,7 @@ export function Avance() {
         <Modal titulo="Avisar el resultado" onCerrar={() => setAvisando(null)} ancho="max-w-lg"
           pie={<>
             <button className="btn-secundario" onClick={() => setAvisando(null)}>Más tarde</button>
-            {avisando.terminar && e.siguiente && (
+            {avisando.terminar && e.siguiente && sinAvisar === 0 && (
               <button className="btn-secundario" onClick={() => {
                 setAvisando(null);
                 setTerminando({ mensaje: 'Todos los estudiantes de esta etapa ya tienen su resultado confirmado.' });
@@ -592,9 +620,10 @@ export function Avance() {
               Se confirmaron <strong className="text-green-700">{avisando.pasan} que avanzan</strong> y{' '}
               <strong className="text-red-700">{avisando.noPasan} que no avanzan</strong>. ¿Les avisas ahora por correo?
             </p>
-            {avisando.terminar && e.siguiente && (
-              <p className="text-gray-500">Conviene avisar antes de terminar la etapa. Cuando vuelvas, la etapa se termina con el botón «Terminar etapa» de arriba.</p>
-            )}
+            <p className="text-gray-500">
+              Después de enviar cada correo vuelves automáticamente aquí, al paso <strong>4. Avisar y terminar</strong>,
+              donde sigues con el otro aviso{e.siguiente && enCurso ? ' y terminas la etapa' : ''}.
+            </p>
             <div className="flex flex-wrap gap-2">
               {r.sin_avisar_pasa > 0 && <button className="btn-primario" onClick={() => { setAvisando(null); avisarA('PASA'); }}>Avisar a los que avanzan ({r.sin_avisar_pasa})</button>}
               {r.sin_avisar_no_pasa > 0 && <button className="btn-primario" onClick={() => { setAvisando(null); avisarA('NO_PASA'); }}>Avisar a los que no avanzan ({r.sin_avisar_no_pasa})</button>}
@@ -625,6 +654,20 @@ export function Avance() {
         <MarcarSegunRanking etapaId={e.id} cupo={e.cupo} onCerrar={() => setMarcandoRanking(false)} />
       )}
       <p className="text-xs text-gray-400">¿Buscas a un estudiante en particular? Revisa <Link to="/invitados" className="underline">Invitados</Link>.</p>
+    </div>
+  );
+}
+
+/** Una fila del paso 4: aviso pendiente (botón), ya enviado (✓) o sin nadie a quien avisar. */
+function PasoAviso({ texto, pendientes, confirmados, onAvisar, deshabilitado }: {
+  texto: string; pendientes: number; confirmados: number; onAvisar: () => void; deshabilitado?: boolean;
+}) {
+  if (pendientes > 0) {
+    return <button className="btn-primario w-full" disabled={deshabilitado} onClick={onAvisar}>{texto} ({pendientes})</button>;
+  }
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500">
+      {confirmados > 0 ? <><span className="text-green-700">✓</span> {texto.replace('Avisar a', 'Avisados')}</> : <><span>—</span> {texto}: aún no hay confirmados</>}
     </div>
   );
 }

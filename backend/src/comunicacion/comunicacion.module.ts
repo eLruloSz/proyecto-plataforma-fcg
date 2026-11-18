@@ -54,7 +54,7 @@ class EnvioDto {
   @IsOptional() @IsArray() @ArrayMaxSize(30) @IsEmail({}, { each: true }) correosExtra?: string[];
   @IsOptional() @IsUUID() envioOrigenId?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsEmail({}, { each: true }) cc?: string[];
-  @IsOptional() @IsIn(['CADA', 'RESUMEN']) ccModo?: 'CADA' | 'RESUMEN';
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsEmail({}, { each: true }) cco?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(2000) @IsUUID('all', { each: true }) excluir?: string[];
   @IsOptional() @ValidateNested() @Type(() => FiltroEtapaDto) filtroEtapa?: FiltroEtapaDto;
 }

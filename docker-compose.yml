@@ -45,6 +45,7 @@ services:
       - ./db/20_orden_plantillas.sql:/docker-entrypoint-initdb.d/20_orden_plantillas.sql:ro
       - ./db/21_logo_firma.sql:/docker-entrypoint-initdb.d/21_logo_firma.sql:ro
       - ./db/22_envios_cc.sql:/docker-entrypoint-initdb.d/22_envios_cc.sql:ro
+      - ./db/23_envios_cco.sql:/docker-entrypoint-initdb.d/23_envios_cco.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U becas -d becas"]
       interval: 5s

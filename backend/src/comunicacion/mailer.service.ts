@@ -7,6 +7,8 @@ export interface Correo {
   para: string;
   /** Copia (CC). */
   cc?: string[];
+  /** Copia oculta (CCO): el destinatario no ve estas direcciones. */
+  cco?: string[];
   asunto: string;
   texto: string;
   responderA?: string;
@@ -56,19 +58,20 @@ export class MailerService {
 
   async enviar(c: Correo): Promise<{ idExterno: string }> {
     if (!this.transporte) {
-      this.log.log(`[simulación] → ${c.para}${c.cc?.length ? ` (cc: ${c.cc.join(', ')})` : ''}: ${c.asunto}`);
+      this.log.log(`[simulación] → ${c.para}${c.cc?.length ? ` (cc: ${c.cc.join(', ')})` : ''}${c.cco?.length ? ` (cco: ${c.cco.join(', ')})` : ''}: ${c.asunto}`);
       return { idExterno: `simulado-${Date.now()}-${Math.random().toString(36).slice(2)}` };
     }
     const desvio = this.redirigirA ? `[Prueba — para: ${c.para}] ` : '';
     // Con el desvío de prueba tampoco sale la copia: se indica en el texto a quién habría ido.
     const texto = this.redirigirA
-      ? `(Correo de prueba desviado. Destinatario real: ${c.para}${c.cc?.length ? ` · CC: ${c.cc.join(', ')}` : ''})\n\n${c.texto}`
+      ? `(Correo de prueba desviado. Destinatario real: ${c.para}${c.cc?.length ? ` · CC: ${c.cc.join(', ')}` : ''}${c.cco?.length ? ` · CCO: ${c.cco.join(', ')}` : ''})\n\n${c.texto}`
       : c.texto;
     const logo = await this.logo.obtener();
     const info = await this.transporte.sendMail({
       from: this.remitente,
       to: this.redirigirA ?? c.para,
       cc: this.redirigirA || !c.cc?.length ? undefined : c.cc,
+      bcc: this.redirigirA || !c.cco?.length ? undefined : c.cco,
       replyTo: c.responderA,
       subject: desvio + c.asunto,
       text: texto,

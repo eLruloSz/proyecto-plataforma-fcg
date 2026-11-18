@@ -129,7 +129,10 @@ export class TareasService {
       accion: { texto: sinConfirmar ? 'Revisar y confirmar' : 'Decidir', ruta },
     });
     tareas.push({
-      clave: 'avisar', titulo: 'Avisar el resultado a los estudiantes',
+      // En la invitación, el aviso a los que avanzan es el correo para elegir la fecha del encuentro online.
+      clave: 'avisar', titulo: tipo === 'INVITACION'
+        ? 'Escribir a los estudiantes (a los que aceptaron: elegir fecha del encuentro)'
+        : 'Avisar el resultado a los estudiantes',
       hecha: confirmados > 0 && r.sin_avisar_pasa + r.sin_avisar_no_pasa === 0,
       detalle: confirmados ? `${r.sin_avisar_pasa + r.sin_avisar_no_pasa} sin avisar` : 'Primero hay que confirmar los resultados.',
       accion: { texto: 'Avisar', ruta },
@@ -199,7 +202,11 @@ export class TareasService {
       `SELECT COUNT(*)::int AS invitados,
               COUNT(*) FILTER (WHERE pe.email IS NULL AND p.estado NOT IN ('NO_CONTINUA','DESISTIO'))::int AS sin_email,
               COUNT(*) FILTER (WHERE p.confirmacion = 'PENDIENTE' AND p.estado NOT IN ('NO_CONTINUA','DESISTIO'))::int AS sin_respuesta,
-              COUNT(*) FILTER (WHERE p.confirmacion = 'CONFIRMADO')::int AS aceptaron
+              COUNT(*) FILTER (WHERE p.confirmacion = 'CONFIRMADO')::int AS aceptaron,
+              COUNT(*) FILTER (WHERE p.confirmacion = 'RECHAZADO')::int AS rechazaron,
+              -- Los que aceptaron necesitan email: a ellos se les escribe en las etapas siguientes.
+              COUNT(*) FILTER (WHERE p.confirmacion = 'CONFIRMADO' AND pe.email IS NULL
+                                 AND p.estado NOT IN ('NO_CONTINUA','DESISTIO'))::int AS aceptaron_sin_email
          FROM postulaciones p JOIN personas pe ON pe.id = p.persona_id
         WHERE p.proceso_id = $1`, [procesoId]);
     // Un paso que depende de los invitados solo está hecho cuando TODOS los liceos que participan
@@ -232,19 +239,19 @@ export class TareasService {
              d.sin_nomina && `${d.sin_nomina} esperando la nómina`].filter(Boolean).join(' · ')
           : `${i.invitados} invitados`,
         accion: { texto: 'Liceos y nóminas', ruta: '/liceos' } },
-      // Primero los contactos y después el correo: sin email el correo no les llega.
-      { clave: 'contactos', titulo: 'Subir los contactos de los invitados (Excel)', hecha: todosConInvitados && i.sin_email === 0,
-        detalle: i.sin_email
-          ? `${plural(i.sin_email, 'invitado', 'invitados')} sin email. Súbelos antes de enviarles el correo.`
-          : 'Todos tienen email.',
-        accion: { texto: 'Subir Excel', ruta: '/invitados?importar=1' } },
-      { clave: 'invitacion', titulo: 'Enviar la invitación a los estudiantes', hecha: todosConInvitados && d.sin_invitacion === 0,
-        detalle: (d.sin_invitacion ? `${plural(d.sin_invitacion, 'liceo', 'liceos')} sin invitación enviada` : 'Enviada en todos los liceos.')
-          + (d.sin_invitacion && i.sin_email ? ` Primero sube los contactos: ${plural(i.sin_email, 'invitado', 'invitados')} sin email.` : ''),
+      // Flujo: la contraparte recibe el listado y el enlace al formulario y se lo reenvía a sus
+      // invitados; ellos responden con sus datos y si aceptan postular. Recién con esas respuestas
+      // se decide quién avanza y se les escribe (pasos "Decidir" y "Avisar" de más abajo).
+      { clave: 'invitacion', titulo: 'Enviar el listado y el formulario a las contrapartes', hecha: todosConInvitados && d.sin_invitacion === 0,
+        detalle: d.sin_invitacion
+          ? `${plural(d.sin_invitacion, 'liceo', 'liceos')} sin enviar. La contraparte les reenvía el formulario a sus invitados.`
+          : 'Enviado a todos los liceos.',
         accion: { texto: 'Escribir correo', ruta: '/comunicacion?nuevo=1&proposito=INVITACION_ESTUDIANTES' } },
-      { clave: 'respuestas', titulo: 'Registrar quién acepta postular', hecha: todosConInvitados && i.sin_respuesta === 0,
-        detalle: `${i.aceptaron} aceptaron · ${i.sin_respuesta} sin respuesta`,
-        accion: { texto: 'Invitados', ruta: '/invitados' } },
+      { clave: 'respuestas', titulo: 'Importar las respuestas del formulario (contactos y quién acepta)',
+        hecha: todosConInvitados && i.sin_respuesta === 0 && i.aceptaron_sin_email === 0,
+        detalle: [`${i.aceptaron} aceptaron`, `${i.rechazaron} no`, `${i.sin_respuesta} sin respuesta`,
+          i.aceptaron_sin_email && `${i.aceptaron_sin_email} aceptaron pero no tienen email`].filter(Boolean).join(' · '),
+        accion: { texto: 'Importar respuestas', ruta: '/invitados?importar=1' } },
     ];
   }
 }

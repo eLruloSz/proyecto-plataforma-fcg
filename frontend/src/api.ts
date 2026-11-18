@@ -195,8 +195,8 @@ export interface Destinatario {
 export interface EnvioDetalle {
   id: string; grupo: Grupo; proposito: string; asunto: string; asunto_visible: string; cuerpo: string; total: number; enviado_en: string;
   enviado_por_nombre: string | null; envio_origen_id: string | null; plantilla_id: string | null;
-  /** Copia: CADA = en CC de cada correo; RESUMEN = una sola copia con la lista de destinatarios. */
-  cc: string[]; cc_modo: ModoCopia;
+  /** Copia (CC) y copia oculta (CCO). cc_modo RESUMEN solo existe en envíos antiguos (una sola copia). */
+  cc: string[]; cc_modo: ModoCopia; cco: string[];
   destinatarios: Destinatario[]; adjuntos: { id: string; nombre_original: string; tamano_bytes: number }[];
 }
 export interface PreviaEnvio {
@@ -213,7 +213,8 @@ export interface SolicitudEnvio {
   /** DIRECTIVOS: correos escritos a mano, además de las cuentas de solo lectura. */
   correosExtra?: string[];
   cc?: string[];
-  ccModo?: ModoCopia;
+  /** Copia oculta: los destinatarios no ven estas direcciones. */
+  cco?: string[];
 }
 export type ModoCopia = 'CADA' | 'RESUMEN';
 export interface Dashboard {

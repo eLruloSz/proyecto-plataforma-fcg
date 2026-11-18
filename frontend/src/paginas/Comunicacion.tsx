@@ -197,6 +197,7 @@ function Plantillas({ onUsar }: { onUsar: (id: string) => void }) {
  * /comunicacion?proposito=X     → redactar con la primera plantilla de ese tipo (con &liceo=ID, a ese liceo)
  * /comunicacion?nuevo=1&etapa=ID&tipo=PASA|NO_PASA|EN_ETAPA|FALTAN_REQUISITOS[&soloSinAviso=1]
  *                               → correo a estudiantes según su situación en una etapa
+ * &volver=/ruta                 → al enviar (o cancelar) se vuelve a esa pantalla en vez del detalle del envío
  */
 const TIPOS_FILTRO: TipoFiltroEtapa[] = ['EN_ETAPA', 'FALTAN_REQUISITOS', 'PASA', 'NO_PASA'];
 
@@ -272,6 +273,9 @@ export function Comunicacion() {
     const adjuntoExterno = params.get('adjunto')
       ? [{ id: params.get('adjunto')!, nombre_original: params.get('adjuntoNombre') ?? 'Archivo adjunto', tamano_bytes: 0 }] : [];
     const propositoUrl = params.get('proposito');
+    // Pantalla a la que se vuelve después de enviar (por ejemplo, el avance de la etapa). Solo rutas internas.
+    const volverParam = params.get('volver');
+    const volver = volverParam && volverParam.startsWith('/') && !volverParam.startsWith('//') ? volverParam : undefined;
     // Desde una plantilla (o un archivo adjunto), se arma un "envío base" con su contenido.
     const desdePlantilla = plantilla || adjuntoExterno.length ? {
       id: '', grupo: liceo ? 'LICEO' : filtroEtapa ? 'POSTULANTES' : plantilla ? grupoDePlantilla(plantilla) : propositoUrl === 'INFORME_DIRECTIVOS' ? 'DIRECTIVOS' : 'CONTRAPARTES',
@@ -283,6 +287,7 @@ export function Comunicacion() {
     return (
       <div>
         <h1 className="titulo mb-4">{reenviar ? 'Recordatorio a los que faltan' : filtroEtapa ? 'Correo a estudiantes de una etapa' : 'Nuevo correo'}</h1>
+        {volver && <p className="-mt-2 mb-4 text-sm text-gray-500">Al enviar vuelves automáticamente al avance de la etapa para seguir con el siguiente paso.</p>}
         <Redactor
           key={params.toString()}
           inicial={{
@@ -292,7 +297,8 @@ export function Comunicacion() {
             reenviar: reenviar ? origen : undefined,
             base: base ? origen : desdePlantilla,
           }}
-          onCancelar={() => (idOrigen ? navegar(-1) : setParams({}))}
+          volver={volver}
+          onCancelar={() => (volver ? navegar(volver) : idOrigen ? navegar(-1) : setParams({}))}
         />
       </div>
     );

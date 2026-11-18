@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, ModoCopia, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
+import { api, EnvioDetalle, FiltroEtapa, Grupo, GRUPOS, Invitado, Liceo, Plantilla, PreviaEnvio, PROPOSITOS, SolicitudEnvio, TipoFiltroEtapa } from '../api';
 import { useProceso } from '../Layout';
 import { PROPOSITOS_DE_ETAPA, tipoEtapa, useEtapa } from '../etapa';
 import { Caja, Etiqueta, useAviso } from '../ui';
@@ -24,7 +24,7 @@ const TEXTO_FILTRO: Record<TipoFiltroEtapa, string> = {
 const ESTUDIANTES = { todos: 'Todos los invitados', PENDIENTE: 'Solo los que no han respondido', CONFIRMADO: 'Solo los que aceptaron' } as const;
 
 /** Redactar un correo → revisar a quién le llega → enviar. */
-export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar: () => void }) {
+export function Redactor({ inicial, onCancelar, volver }: { inicial: Inicial; onCancelar: () => void; volver?: string }) {
   const qc = useQueryClient();
   const avisar = useAviso();
   const navegar = useNavigate();
@@ -60,14 +60,26 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const [excluir, setExcluir] = useState<Set<string>>(new Set());
   const [verEjemplo, setVerEjemplo] = useState(0);
   const [error, setError] = useState('');
-  // Copia (CC): por defecto los demás usuarios del equipo (o la copia del correo que se reenvía).
+  // Copia (CC) y copia oculta (CCO): por defecto los demás usuarios del equipo van en CC
+  // (o la copia del correo que se reenvía).
   const [cc, setCc] = useState<string[] | null>(origen?.cc ?? null);
+  const [cco, setCco] = useState<string[]>(origen?.cco ?? []);
   const [ccOtros, setCcOtros] = useState('');
-  const [ccModo, setCcModo] = useState<ModoCopia>(origen?.cc_modo ?? (inicial.grupo === 'LICEO' ? 'CADA' : 'RESUMEN'));
+  const [ccoOtros, setCcoOtros] = useState('');
   useEffect(() => { if (cc === null && sugeridosCc) setCc(sugeridosCc.map((u) => u.email)); }, [sugeridosCc, cc]);
-  const ccEscritos = [...new Set(ccOtros.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
-  const ccInvalidos = ccEscritos.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
-  const ccFinal = [...new Set([...(cc ?? []), ...ccEscritos.filter((x) => !ccInvalidos.includes(x))])];
+  const separar = (t: string) => [...new Set(t.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const esEmail = (x: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x);
+  const ccEscritos = separar(ccOtros);
+  const ccoEscritos = separar(ccoOtros);
+  const copiaInvalidos = [...ccEscritos, ...ccoEscritos].filter((x) => !esEmail(x));
+  const ccFinal = [...new Set([...(cc ?? []), ...ccEscritos.filter(esEmail)])];
+  const ccoFinal = [...new Set([...cco, ...ccoEscritos.filter(esEmail)])].filter((x) => !ccFinal.includes(x));
+  /** Copia de un usuario del equipo: en CC, en CCO o sin copia. */
+  const copiaDe = (email: string) => ((cc ?? []).includes(email) ? 'CC' : cco.includes(email) ? 'CCO' : 'NO');
+  const cambiarCopia = (email: string, a: 'CC' | 'CCO' | 'NO') => {
+    setCc((l) => [...(l ?? []).filter((x) => x !== email), ...(a === 'CC' ? [email] : [])]);
+    setCco((l) => [...l.filter((x) => x !== email), ...(a === 'CCO' ? [email] : [])]);
+  };
   const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
   const [nombrePlantilla, setNombrePlantilla] = useState('');
 
@@ -105,7 +117,8 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const solicitud = (): SolicitudEnvio => {
     const s: SolicitudEnvio = { grupo, proposito, asunto, cuerpo, adjuntoIds: adjuntos.map((a) => a.id) };
     if (plantillaId) s.plantillaId = plantillaId;
-    if (ccFinal.length) { s.cc = ccFinal; s.ccModo = ccModo; }
+    if (ccFinal.length) s.cc = ccFinal;
+    if (ccoFinal.length) s.cco = ccoFinal;
     if (inicial.reenviar) s.envioOrigenId = inicial.reenviar.id;
     else if (filtro) s.filtroEtapa = filtro;
     else if (grupo === 'LICEO') s.liceoIds = liceoIds;
@@ -124,9 +137,15 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
   const enviar = useMutation({
     mutationFn: () => api.post<EnvioDetalle>('/comunicacion/envios', { ...solicitud(), excluir: [...excluir] }),
     onSuccess: (e) => {
-      avisar(`Enviando ${e.total} correos…`);
-      ['envios', 'dashboard', 'hitos'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      navegar(`/comunicacion/envios/${e.id}`);
+      ['envios', 'dashboard', 'hitos', 'avance', 'tareas'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      if (volver) {
+        // Por ejemplo, desde el avance de la etapa: se vuelve para seguir con el siguiente aviso o terminar la etapa.
+        avisar(`Enviando ${e.total} correo${e.total === 1 ? '' : 's'}. El detalle queda en Comunicación.`);
+        navegar(volver);
+      } else {
+        avisar(`Enviando ${e.total} correos…`);
+        navegar(`/comunicacion/envios/${e.id}`);
+      }
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -152,7 +171,7 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
     if (!asunto.trim() || !cuerpo.trim()) return 'Escribe el asunto y el cuerpo del correo.';
     if (grupo === 'LICEO' && !inicial.reenviar && !liceoIds.length) return 'Elige al menos un liceo.';
     if (grupo === 'DIRECTIVOS' && extrasInvalidos.length) return `Revisa estos correos: ${extrasInvalidos.join(', ')}`;
-    if (ccInvalidos.length) return `Revisa los correos de la copia: ${ccInvalidos.join(', ')}`;
+    if (copiaInvalidos.length) return `Revisa los correos de la copia: ${copiaInvalidos.join(', ')}`;
     return '';
   };
 
@@ -244,34 +263,39 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
           </div>
         )}
 
-        {/* Copia (CC) */}
+        {/* Copia (CC) y copia oculta (CCO) */}
         <div className="rounded-md border border-gray-200 p-3">
-          <span className="label">Copia (CC)</span>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span className="label">Copia</span>
+          <p className="mb-2 text-xs text-gray-500">
+            <strong>CC</strong>: el destinatario ve quién va en copia. <strong>CCO</strong> (copia oculta): recibe la copia, pero el destinatario no ve ese correo.
+          </p>
+          <div className="space-y-1">
             {(sugeridosCc ?? []).map((u) => (
-              <label key={u.email} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={(cc ?? []).includes(u.email)}
-                  onChange={(e) => setCc((l) => (e.target.checked ? [...(l ?? []), u.email] : (l ?? []).filter((x) => x !== u.email)))} />
-                {u.nombre} <span className="text-xs text-gray-400">{u.email}</span>
-              </label>
+              <div key={u.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm">
+                <span className="min-w-0">
+                  <span className="font-medium text-gray-800">{u.nombre}</span>{' '}
+                  <span className="text-xs text-gray-500">{u.email}</span>
+                </span>
+                <span className="text-gray-300" aria-hidden>→</span>
+                <div className="inline-flex overflow-hidden rounded-md border border-gray-300 bg-white text-xs" role="radiogroup" aria-label={`Copia para ${u.nombre} (${u.email})`}>
+                  {(['CC', 'CCO', 'NO'] as const).map((op) => (
+                    <button key={op} type="button" role="radio" aria-checked={copiaDe(u.email) === op} onClick={() => cambiarCopia(u.email, op)}
+                      className={`px-2.5 py-1 ${copiaDe(u.email) === op ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      {op === 'NO' ? 'Sin copia' : op}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
             {sugeridosCc?.length === 0 && <span className="text-xs text-gray-400">No hay otros usuarios del equipo.</span>}
           </div>
-          <input className="input mt-2 py-1 text-sm" value={ccOtros} onChange={(e) => setCcOtros(e.target.value)}
-            placeholder="Otros correos en copia (opcional, separados por coma)" aria-label="Otros correos en copia" />
-          {ccInvalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {ccInvalidos.join(', ')}</span>}
-          {ccFinal.length > 0 && (
-            <div className="mt-2 space-y-1 text-sm">
-              <label className="flex items-start gap-2">
-                <input type="radio" className="mt-1" name="cc-modo" checked={ccModo === 'RESUMEN'} onChange={() => setCcModo('RESUMEN')} />
-                <span><strong>Una sola copia</strong> <span className="text-gray-500">con el texto del correo y la lista de a quién se envió (recomendado si son varios destinatarios).</span></span>
-              </label>
-              <label className="flex items-start gap-2">
-                <input type="radio" className="mt-1" name="cc-modo" checked={ccModo === 'CADA'} onChange={() => setCcModo('CADA')} />
-                <span><strong>En CC de cada correo</strong> <span className="text-gray-500">como un CC normal: el destinatario ve la copia y la respuesta puede llegarles a todos{previa ? ` (${aEnviar.length} correo${aEnviar.length === 1 ? '' : 's'} = ${aEnviar.length} copia${aEnviar.length === 1 ? '' : 's'})` : ''}.</span></span>
-              </label>
-            </div>
-          )}
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <input className="input py-1 text-sm" value={ccOtros} onChange={(e) => setCcOtros(e.target.value)}
+              placeholder="Otros correos en CC (separados por coma)" aria-label="Otros correos en CC" />
+            <input className="input py-1 text-sm" value={ccoOtros} onChange={(e) => setCcoOtros(e.target.value)}
+              placeholder="Otros correos en CCO (separados por coma)" aria-label="Otros correos en CCO" />
+          </div>
+          {copiaInvalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {copiaInvalidos.join(', ')}</span>}
         </div>
 
         {/* Contenido */}
@@ -332,8 +356,8 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="subtitulo">
               Le llegará a {aEnviar.length} destinatario{aEnviar.length === 1 ? '' : 's'}
-              {ccFinal.length > 0 && <span className="ml-2 text-sm font-normal text-gray-500">
-                {ccModo === 'RESUMEN' ? `+ 1 copia a ${ccFinal.join(', ')}` : `con copia a ${ccFinal.join(', ')}`}</span>}
+              {ccFinal.length > 0 && <span className="ml-2 text-sm font-normal text-gray-500">con copia (CC) a {ccFinal.join(', ')}</span>}
+              {ccoFinal.length > 0 && <span className="ml-2 text-sm font-normal text-gray-500">· copia oculta (CCO) a {ccoFinal.join(', ')}</span>}
             </h2>
             <button className="btn-primario" disabled={!aEnviar.length || enviar.isPending} onClick={() => enviar.mutate()}>
               {enviar.isPending ? 'Enviando…' : `Enviar a ${aEnviar.length}`}
@@ -374,7 +398,8 @@ export function Redactor({ inicial, onCancelar }: { inicial: Inicial; onCancelar
               {ejemplo ? (
                 <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm">
                   <div className="text-xs text-gray-500">Para: {ejemplo.email}</div>
-                  {ccFinal.length > 0 && ccModo === 'CADA' && <div className="text-xs text-gray-500">CC: {ccFinal.join(', ')}</div>}
+                  {ccFinal.length > 0 && <div className="text-xs text-gray-500">CC: {ccFinal.join(', ')}</div>}
+                  {ccoFinal.length > 0 && <div className="text-xs text-gray-400">CCO (el destinatario no lo ve): {ccoFinal.join(', ')}</div>}
                   <div className="mb-3 font-semibold">{ejemplo.asunto}</div>
                   <div className="whitespace-pre-wrap leading-relaxed text-gray-800">{ejemplo.cuerpo}</div>
                   {adjuntos.length > 0 && <div className="mt-3 text-xs text-gray-500">📎 {adjuntos.map((a) => a.nombre).join(', ')}</div>}

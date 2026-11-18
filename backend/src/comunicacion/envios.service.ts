@@ -25,8 +25,8 @@ export interface SolicitudEnvio {
   correosExtra?: string[];
   /** Copia del envío (normalmente, los demás usuarios del equipo). */
   cc?: string[];
-  /** CADA: CC en cada correo · RESUMEN: una sola copia con el texto y la lista de destinatarios. */
-  ccModo?: 'CADA' | 'RESUMEN';
+  /** Copia oculta (CCO) en cada correo: los destinatarios no ven estas direcciones. */
+  cco?: string[];
   /** Reenviar solo a quienes no respondieron un envío anterior. */
   envioOrigenId?: string;
   /** Destinatarios que el usuario quitó de la lista antes de enviar (ids de liceo o postulación). */
@@ -358,13 +358,17 @@ export class EnviosService {
       proposito = o?.proposito ?? proposito;
     }
 
+    // Copia (CC) y copia oculta (CCO). Si un correo está en ambas, queda solo en CC.
+    const limpiar = (l?: string[]) => [...new Set((l ?? []).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+    const cc = limpiar(s.cc);
+    const cco = limpiar(s.cco).filter((x) => !cc.includes(x));
+
     const envioId = await this.ds.transaction(async (em) => {
       const [envio] = await em.query(
-        `INSERT INTO envios (proceso_id, plantilla_id, envio_origen_id, proposito, grupo, asunto, cuerpo, total, enviado_por, cc, cc_modo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+        `INSERT INTO envios (proceso_id, plantilla_id, envio_origen_id, proposito, grupo, asunto, cuerpo, total, enviado_por, cc, cc_modo, cco)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'CADA', $11) RETURNING id`,
         [proceso.id, s.plantillaId ?? null, s.envioOrigenId ?? null, proposito, grupo, s.asunto, s.cuerpo,
-          destinatarios.length, usuarioId, [...new Set((s.cc ?? []).map((x) => x.trim().toLowerCase()).filter(Boolean))],
-          s.ccModo ?? 'CADA'],
+          destinatarios.length, usuarioId, cc, cco],
       );
       for (const id of adjuntoIds) {
         await em.query(`INSERT INTO envio_adjuntos (envio_id, archivo_id) VALUES ($1, $2)`, [envio.id, id]);
@@ -409,8 +413,9 @@ export class EnviosService {
         `SELECT ar.* FROM envio_adjuntos ea JOIN archivos ar ON ar.id = ea.archivo_id WHERE ea.envio_id = $1`, [envioId])) {
         adjuntos.push({ nombre: a.nombre_original, contenido: await this.archivos.leer(a), tipo: a.mime_type });
       }
-      const [envio] = await this.ds.query(`SELECT cc, cc_modo, total FROM envios WHERE id = $1`, [envioId]);
+      const [envio] = await this.ds.query(`SELECT cc, cc_modo, cco, total FROM envios WHERE id = $1`, [envioId]);
       const cc: string[] = envio?.cc ?? [];
+      const cco: string[] = envio?.cco ?? [];
       const ccEnCada = envio?.cc_modo !== 'RESUMEN' ? cc : [];
       const pendientes = await this.ds.query(
         `SELECT id, liceo_id, nombre, email, asunto_final, cuerpo_final FROM envio_destinatarios
@@ -419,7 +424,7 @@ export class EnviosService {
       for (const d of pendientes) {
         try {
           const { idExterno } = await this.mailer.enviar({
-            para: d.email, cc: ccEnCada, asunto: d.asunto_final, texto: d.cuerpo_final, responderA, adjuntos,
+            para: d.email, cc: ccEnCada, cco, asunto: d.asunto_final, texto: d.cuerpo_final, responderA, adjuntos,
           });
           await this.ds.query(
             `UPDATE envio_destinatarios SET entrega = 'ENVIADO', id_externo = $2, error = NULL WHERE id = $1`,
@@ -432,7 +437,7 @@ export class EnviosService {
         }
         await new Promise((r) => setTimeout(r, 150)); // no saturar el servidor SMTP
       }
-      // Copia única: el primer correo tal como llegó, con la lista de a quién se envió.
+      // Copia única (solo envíos antiguos con cc_modo RESUMEN): el primer correo tal como llegó, con la lista de a quién se envió.
       if (envio?.cc_modo === 'RESUMEN' && cc.length && pendientes.length) {
         const ejemplo = pendientes[0];
         const lista = pendientes.map((d: { nombre: string; email: string }) => `- ${d.nombre} <${d.email}>`).join('\n');
