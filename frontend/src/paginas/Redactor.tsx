@@ -64,14 +64,16 @@ export function Redactor({ inicial, onCancelar, volver }: { inicial: Inicial; on
   // (o la copia del correo que se reenvía).
   const [cc, setCc] = useState<string[] | null>(origen?.cc ?? null);
   const [cco, setCco] = useState<string[]>(origen?.cco ?? []);
-  const [ccOtros, setCcOtros] = useState('');
-  const [ccoOtros, setCcoOtros] = useState('');
+  // Otros correos (escritos a mano): un solo cuadro y se elige si van en CC o en CCO.
+  const [otros, setOtros] = useState('');
+  const [otrosModo, setOtrosModo] = useState<'CC' | 'CCO'>('CC');
   useEffect(() => { if (cc === null && sugeridosCc) setCc(sugeridosCc.map((u) => u.email)); }, [sugeridosCc, cc]);
   const separar = (t: string) => [...new Set(t.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
   const esEmail = (x: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x);
-  const ccEscritos = separar(ccOtros);
-  const ccoEscritos = separar(ccoOtros);
-  const copiaInvalidos = [...ccEscritos, ...ccoEscritos].filter((x) => !esEmail(x));
+  const otrosEscritos = separar(otros);
+  const ccEscritos = otrosModo === 'CC' ? otrosEscritos : [];
+  const ccoEscritos = otrosModo === 'CCO' ? otrosEscritos : [];
+  const copiaInvalidos = otrosEscritos.filter((x) => !esEmail(x));
   const ccFinal = [...new Set([...(cc ?? []), ...ccEscritos.filter(esEmail)])];
   const ccoFinal = [...new Set([...cco, ...ccoEscritos.filter(esEmail)])].filter((x) => !ccFinal.includes(x));
   /** Copia de un usuario del equipo: en CC, en CCO o sin copia. */
@@ -289,11 +291,18 @@ export function Redactor({ inicial, onCancelar, volver }: { inicial: Inicial; on
             ))}
             {sugeridosCc?.length === 0 && <span className="text-xs text-gray-400">No hay otros usuarios del equipo.</span>}
           </div>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <input className="input py-1 text-sm" value={ccOtros} onChange={(e) => setCcOtros(e.target.value)}
-              placeholder="Otros correos en CC (separados por coma)" aria-label="Otros correos en CC" />
-            <input className="input py-1 text-sm" value={ccoOtros} onChange={(e) => setCcoOtros(e.target.value)}
-              placeholder="Otros correos en CCO (separados por coma)" aria-label="Otros correos en CCO" />
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm">
+            <input className="input min-w-[220px] flex-1 py-1 text-sm" value={otros} onChange={(e) => setOtros(e.target.value)}
+              placeholder="Otros correos (opcional, separados por coma)" aria-label="Otros correos en copia" />
+            <span className="text-gray-300" aria-hidden>→</span>
+            <div className="inline-flex overflow-hidden rounded-md border border-gray-300 bg-white text-xs" role="radiogroup" aria-label="Copia para los otros correos">
+              {(['CC', 'CCO'] as const).map((op) => (
+                <button key={op} type="button" role="radio" aria-checked={otrosModo === op} onClick={() => setOtrosModo(op)}
+                  className={`px-2.5 py-1 ${otrosModo === op ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                  {op}
+                </button>
+              ))}
+            </div>
           </div>
           {copiaInvalidos.length > 0 && <span className="text-xs text-red-700">Revisa: {copiaInvalidos.join(', ')}</span>}
         </div>
